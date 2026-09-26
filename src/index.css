@@ -1,0 +1,82 @@
+@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap');
+@import "tailwindcss";
+@import "leaflet/dist/leaflet.css";
+
+:root {
+  --bg-cottage: #FFF0F5; /* Lavender Blush / Baby Pink Tint */
+  --bg-cream: #FFFDF0;
+  --baby-pink: #FFC0CB;
+  --light-pink: #FFB6C1;
+  --soft-pink: #FFD1DC;
+  --pink-primary: #E86F88;
+  --pink-hover: #D85A74;
+  --pink-deep: #C24361;
+  --sage-green: #4A7C59;
+  --sage-light: #E8F5E9;
+  --earth-dark: #2D2321;
+  --earth-muted: #6B5E5B;
+}
+
+body {
+  margin: 0;
+  padding: 0;
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  background-color: #FFF0F5;
+  color: #2D2321;
+  overflow-x: hidden;
+}
+
+h1, h2, h3, h4, h5, h6, .font-heading {
+  font-family: 'Outfit', sans-serif;
+}
+
+/* Custom Cozy Baby Pink Scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: #FFF0F5;
+}
+::-webkit-scrollbar-thumb {
+  background: #FFB6C1;
+  border-radius: 9999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #E86F88;
+}
+
+/* Animations */
+@keyframes pulseGlow {
+  0%, 100% {
+    box-shadow: 0 0 15px rgba(255, 182, 193, 0.4);
+  }
+  50% {
+    box-shadow: 0 0 25px rgba(232, 111, 136, 0.55);
+  }
+}
+
+.animate-glow {
+  animation: pulseGlow 3s infinite ease-in-out;
+}
+
+@keyframes floatSlow {
+  0%, 100% { transform: translateY(0px); }
+  50% { transform: translateY(-8px); }
+}
+
+.animate-float {
+  animation: floatSlow 4s ease-in-out infinite;
+}
+
+/* Leaflet Map overrides */
+.leaflet-popup-content-wrapper {
+  border-radius: 1.25rem !important;
+  box-shadow: 0 10px 25px -5px rgba(232, 111, 136, 0.25) !important;
+  border: 2px solid #FFB6C1 !important;
+  padding: 4px !important;
+  background: #FFFDF0 !important;
+}
+.leaflet-popup-tip {
+  background: #FFFDF0 !important;
+}
