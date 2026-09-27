@@ -9,23 +9,23 @@ export const HelpFAQPage: React.FC<HelpFAQPageProps> = ({ onNavigate }) => {
   const [openIndex, setOpenIndex] = useState<number | null>(0);
 
   const faqs = [
-    {
-      q: 'Is borrowing tools on CommunityCloset completely free?',
-      a: 'Yes! CommunityCloset is non-profit and community-driven ("For the people, by the people"). Borrowing items from neighbors is free, though some lenders may request a temporary refundable security deposit.'
-    },
-    {
-      q: 'How does item pickup work in Katraj, Pune?',
-      a: 'After a lender approves your borrow request, you can use the live Katraj Messages hub to arrange a safe pickup point (e.g. Rajiv Gandhi Zoological Park circle or Katraj Lake view).'
-    },
-    {
-      q: 'What happens if a tool gets damaged during borrowing?',
-      a: 'Borrowers are expected to handle items with care and return them clean. If accidental damage occurs, discuss resolution with the lender or file a dispute ticket on our Complaints page for Katraj admin assistance.'
-    },
-    {
-      q: 'What is the Material Exchange section?',
-      a: 'The Material Exchange allows neighbors to give away or trade leftover renovation materials like plywood sheets, ceramic tiles, PVC pipes, or bricks that would otherwise end up in Pune landfills.'
-    }
-  ];
+  {
+    q: 'Is borrowing items on CommunityCloset free?',
+    a: 'Yes, borrowing items from other community members is free. However, a lender may ask for a refundable security deposit for certain items.'
+  },
+  {
+    q: 'How can I collect an item I want to borrow?',
+    a: 'Once the owner accepts your request, you can contact them through the Messages section and decide a convenient and safe place to collect the item.'
+  },
+  {
+    q: 'What if I damage an item while borrowing it?',
+    a: 'Borrowers should take proper care of the items and return them in good condition. If an item gets accidentally damaged, the borrower and owner can discuss the issue and find a suitable solution.'
+  },
+  {
+    q: 'What is the Material Exchange section?',
+    a: 'Material Exchange is a section where community members can give away or exchange extra materials such as plywood, tiles, PVC pipes, bricks, and other useful items instead of throwing them away.'
+  }
+];
 
   return (
     <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8 animate-fade-in">

@@ -77,11 +77,11 @@ export const HomePage: React.FC<HomePageProps> = ({
       {/* "I Need..." Search Widget (Real DB Keyword Search - No AI/LLM) */}
       <div className="bg-white p-6 rounded-3xl border border-[#FFC0CB]/80 shadow-md space-y-4">
         <div>
-          <h2 className="font-extrabold text-gray-900 text-lg">"I Need..." Resource Finder</h2>
-          <p className="text-xs text-gray-500">
-            Search live Katraj database listings by keyword (e.g., "drill", "ladder", "plywood", "gardening").
-          </p>
-        </div>
+  <h2 className="font-extrabold text-gray-900 text-lg">"I Need..." Resource Finder</h2>
+  <p className="text-xs text-gray-500">
+    Find useful resources shared by your community using keywords like books, clothes, furniture, or electronics.
+  </p>
+</div>
 
         <form onSubmit={handleSearchSubmit} className="flex flex-col sm:flex-row gap-2">
           <div className="relative flex-1">
@@ -93,7 +93,7 @@ export const HomePage: React.FC<HomePageProps> = ({
                 setSearchQuery(e.target.value);
                 setHasSearched(false);
               }}
-              placeholder="What tool or material do you need today?"
+             placeholder="What resource are you looking for today?"
               className="w-full pl-12 pr-4 py-3 rounded-2xl border border-gray-300 text-sm focus:outline-none focus:border-[#900C3F]"
             />
           </div>

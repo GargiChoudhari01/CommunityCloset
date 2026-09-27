@@ -6,14 +6,23 @@ export const KATRAJ_CENTER = { lat: 18.4575, lng: 73.8508 };
 export const DEFAULT_USERS: User[] = [];
 
 export const DEFAULT_CATEGORIES: Category[] = [
-  { id: 'cat-1', name: 'Power Tools', type: 'tool', icon: 'Wrench', description: 'Drills, saws, sanders, angle grinders' },
-  { id: 'cat-2', name: 'Gardening & Lawn', type: 'tool', icon: 'Sprout', description: 'Lawn mowers, pruners, spades, hoses' },
-  { id: 'cat-3', name: 'Painting & Masonry', type: 'tool', icon: 'Paintbrush', description: 'Ladders, paint sprayers, trowels' },
-  { id: 'cat-4', name: 'Lumber & Wood', type: 'material', icon: 'Trees', description: 'Leftover plywood, wooden planks, timber' },
-  { id: 'cat-5', name: 'Tiles & Bricks', type: 'material', icon: 'Boxes', description: 'Ceramic tiles, red bricks, paving blocks' },
-  { id: 'cat-6', name: 'Hardware & Plumbing', type: 'material', icon: 'Hammer', description: 'PVC pipes, copper wires, screws, bolts' },
-  { id: 'cat-7', name: 'Baby & Nursery', type: 'tool', icon: 'Heart', description: 'Cribs, strollers, high chairs, baby care' },
-  { id: 'cat-8', name: 'Kitchen & Household', type: 'tool', icon: 'Layers', description: 'Blenders, ladders, party tables, sewing machines' },
+
+  { id: 'cat-1', name: 'Clothing & Accessories', type: 'material', icon: 'Shirt', description: 'Clothes, shoes, bags, and accessories' },
+
+  { id: 'cat-2', name: 'Books & Study', type: 'material', icon: 'BookOpen', description: 'Books, textbooks, notebooks, and study materials' },
+
+  { id: 'cat-3', name: 'Furniture', type: 'material', icon: 'Armchair', description: 'Chairs, tables, shelves, and other furniture' },
+
+  { id: 'cat-4', name: 'Kitchen Items', type: 'tool', icon: 'Utensils', description: 'Cookware, utensils, appliances, and kitchen items' },
+
+  { id: 'cat-5', name: 'Electronics', type: 'tool', icon: 'Laptop', description: 'Laptops, chargers, speakers, and electronic devices' },
+
+  { id: 'cat-6', name: 'Sports & Fitness', type: 'tool', icon: 'Dumbbell', description: 'Sports equipment, fitness gear, and accessories' },
+
+  { id: 'cat-7', name: 'Toys & Games', type: 'material', icon: 'Gamepad2', description: 'Toys, board games, puzzles, and recreational items' },
+
+  { id: 'cat-8', name: 'Home & Utility', type: 'tool', icon: 'House', description: 'Household items, cleaning tools, and useful utilities' },
+
 ];
 
 export const DEFAULT_ITEMS: ResourceItem[] = [];

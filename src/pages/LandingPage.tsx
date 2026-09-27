@@ -90,18 +90,19 @@ export const LandingPage: React.FC<LandingPageProps> = ({
                 <span className="bg-emerald-100 text-emerald-800 text-[10px] font-bold px-2.5 py-1 rounded-full uppercase">Verified Neighborhood</span>
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
-                <div className="bg-[#FFF0F5] p-3 rounded-2xl border border-[#FFC0CB]/60">
-                  <span className="text-[10px] font-bold uppercase text-[#900C3F]">Popular Tool</span>
-                  <p className="font-bold text-gray-900 text-xs mt-1">Bosch Impact Drill Set</p>
-                  <p className="text-[10px] text-gray-500">Lender: Aarav (Katraj)</p>
-                </div>
-                <div className="bg-emerald-50 p-3 rounded-2xl border border-emerald-200">
-                  <span className="text-[10px] font-bold uppercase text-emerald-700">Material Exchange</span>
-                  <p className="font-bold text-gray-900 text-xs mt-1">Teak Plywood Sheets</p>
-                  <p className="text-[10px] text-emerald-700">Free Giveaway</p>
-                </div>
-              </div>
+             <div className="grid grid-cols-2 gap-3">
+  <div className="bg-[#FFF0F5] p-3 rounded-2xl border border-[#FFC0CB]/60">
+    <span className="text-[10px] font-bold uppercase text-[#900C3F]">Popular Resource</span>
+    <p className="font-bold text-gray-900 text-xs mt-1">Board Games</p>
+    <p className="text-[10px] text-gray-500">Shared by a community member</p>
+  </div>
+
+  <div className="bg-emerald-50 p-3 rounded-2xl border border-emerald-200">
+    <span className="text-[10px] font-bold uppercase text-emerald-700">Available to Share</span>
+    <p className="font-bold text-gray-900 text-xs mt-1">Study Table</p>
+    <p className="text-[10px] text-emerald-700">Available for borrowing</p>
+  </div>
+</div>
 
               <div className="pt-2 flex items-center justify-between text-xs text-gray-500">
                 <span className="flex items-center space-x-1"><Users className="w-4 h-4 text-[#E86F88]" /><span>34 Active Lenders Today</span></span>

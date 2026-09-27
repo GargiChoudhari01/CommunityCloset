@@ -21,8 +21,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess, onNavigate
   const [resetSent, setResetSent] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
 
-  const interestOptions = ['Gardening', 'Woodworking', 'DIY', 'Painting', 'Baby Care', 'Sewing & Craft', 'Power Tools', 'Electronics'];
-
+ const interestOptions = ['Books', 'Clothes', 'Furniture', 'Kitchen Items','Sports Equipment', 'Electronics', 'Study Materials'];
   const toggleInterest = (tag: string) => {
     if (selectedInterests.includes(tag)) {
       setSelectedInterests(selectedInterests.filter(t => t !== tag));
