@@ -2,6 +2,7 @@ import React from 'react';
 import type { ResourceItem } from '../../types';
 import { ArrowLeft, Trash2, Star } from 'lucide-react';
 import { storage } from '../../services/storage';
+import { reportError } from '../../services/reportError';
 
 interface AdminListingsPageProps {
   items: ResourceItem[];
@@ -10,14 +11,22 @@ interface AdminListingsPageProps {
 }
 
 export const AdminListingsPage: React.FC<AdminListingsPageProps> = ({ items, onBack, onRefresh }) => {
-  const handleDelete = (id: string) => {
-    storage.deleteItem(id);
-    onRefresh();
+  const handleDelete = async (id: string) => {
+    try {
+      await storage.deleteItem(id);
+      onRefresh();
+    } catch (error) {
+      reportError(error);
+    }
   };
 
-  const handleToggleFeatured = (item: ResourceItem) => {
-    storage.updateItem(item.id, { featured: !item.featured });
-    onRefresh();
+  const handleToggleFeatured = async (item: ResourceItem) => {
+    try {
+      await storage.updateItem(item.id, { featured: !item.featured });
+      onRefresh();
+    } catch (error) {
+      reportError(error);
+    }
   };
 
   return (
@@ -42,7 +51,7 @@ export const AdminListingsPage: React.FC<AdminListingsPageProps> = ({ items, onB
 
               <div className="flex items-center space-x-2 pt-2">
                 <button
-                  onClick={() => handleToggleFeatured(i)}
+                  onClick={() => { void handleToggleFeatured(i); }}
                   className={`p-1.5 rounded-lg border text-xs font-bold ${
                     i.featured ? 'bg-amber-100 text-amber-800 border-amber-300' : 'bg-gray-50 text-gray-600'
                   }`}
@@ -51,7 +60,7 @@ export const AdminListingsPage: React.FC<AdminListingsPageProps> = ({ items, onB
                   <Star className="w-3.5 h-3.5 fill-current" />
                 </button>
                 <button
-                  onClick={() => handleDelete(i.id)}
+                  onClick={() => { void handleDelete(i.id); }}
                   className="p-1.5 rounded-lg border bg-red-50 text-red-600 border-red-200"
                   title="Remove Listing"
                 >

@@ -2,6 +2,7 @@ import React from 'react';
 import type { User } from '../../types';
 import { ArrowLeft } from 'lucide-react';
 import { storage } from '../../services/storage';
+import { reportError } from '../../services/reportError';
 
 interface AdminUsersPageProps {
   users: User[];
@@ -10,15 +11,19 @@ interface AdminUsersPageProps {
 }
 
 export const AdminUsersPage: React.FC<AdminUsersPageProps> = ({ users, onBack, onRefresh }) => {
-  const toggleBanStatus = (user: User) => {
+  const toggleBanStatus = async (user: User) => {
     const updatedUsers = users.map(u => {
       if (u.id === user.id) {
         return { ...u, status: u.status === 'banned' ? 'active' : 'banned' } as User;
       }
       return u;
     });
-    storage.saveUsers(updatedUsers);
-    onRefresh();
+    try {
+      await storage.saveUsers(updatedUsers);
+      onRefresh();
+    } catch (error) {
+      reportError(error);
+    }
   };
 
   return (
@@ -59,7 +64,7 @@ export const AdminUsersPage: React.FC<AdminUsersPageProps> = ({ users, onBack, o
                 </td>
                 <td className="p-4">
                   <button
-                    onClick={() => toggleBanStatus(u)}
+                    onClick={() => { void toggleBanStatus(u); }}
                     className={`px-3 py-1 rounded-xl text-[11px] font-bold transition-all ${
                       u.status === 'banned' ? 'bg-emerald-600 text-white' : 'bg-red-100 text-red-700 hover:bg-red-200'
                     }`}

@@ -1,12 +1,12 @@
 import React, { useState } from 'react';
 import { X, Mail, Lock, User as UserIcon, Shield, Globe } from 'lucide-react';
 import type { User } from '../types';
-import { storage } from '../services/storage';
+import { sendPasswordReset, signIn, signInWithGoogle, signUp } from '../services/auth';
 
 interface AuthModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onSuccess: (user: User) => void;
+  onSuccess: (user: User) => void | Promise<void>;
 }
 
 export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess }) => {
@@ -14,59 +14,52 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [name, setName] = useState('');
+  const [error, setError] = useState('');
 
   if (!isOpen) return null;
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const existingUsers = storage.getUsers();
-    const existing = existingUsers.find(u => u.email.toLowerCase() === email.toLowerCase());
-
-    if (existing) {
-      storage.setCurrentUser(existing);
-      onSuccess(existing);
-    } else {
-      const newUser: User = {
-        id: `u-${Date.now()}`,
-        name: name || email.split('@')[0] || 'Katraj Neighbor',
-        email: email || 'neighbor@katraj.org',
-        role: 'user',
-        locationAddress: 'Katraj, Pune, Maharashtra',
-        lat: 18.4575,
-        lng: 73.8508,
-        ecoPoints: 100,
-        co2SavedKg: 0,
-        verified: true,
-        status: 'active',
-        createdAt: new Date().toISOString()
-      };
-      const users = [newUser, ...existingUsers];
-      storage.saveUsers(users);
-      storage.setCurrentUser(newUser);
-      onSuccess(newUser);
+    setError('');
+    try {
+      if (isSignUp) {
+        const result = await signUp(email.trim(), password, {
+          name: name.trim() || email.split('@')[0],
+          locationAddress: 'Katraj, Pune, Maharashtra',
+        });
+        if (result.needsEmailConfirmation) {
+          setError('Account created. Check your email to confirm your address, then sign in.');
+          return;
+        }
+        if (result.user) await onSuccess(result.user);
+      } else {
+        await onSuccess(await signIn(email.trim(), password));
+      }
+      onClose();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Unable to authenticate.');
     }
-    onClose();
   };
 
-  const handleGoogleOAuth = () => {
-    const googleUser: User = {
-      id: `u-google-${Date.now()}`,
-      name: 'Google Community User',
-      email: 'user.google@gmail.com',
-      role: 'user',
-      avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=300&q=80',
-      locationAddress: 'Katraj Zoo Circle, Pune',
-      lat: 18.4582,
-      lng: 73.8512,
-      ecoPoints: 250,
-      co2SavedKg: 15,
-      verified: true,
-      status: 'active',
-      createdAt: new Date().toISOString()
-    };
-    storage.setCurrentUser(googleUser);
-    onSuccess(googleUser);
-    onClose();
+  const handleGoogleOAuth = async () => {
+    try {
+      await signInWithGoogle();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Unable to sign in with Google.');
+    }
+  };
+
+  const handlePasswordReset = async () => {
+    if (!email.trim()) {
+      setError('Enter your email address first.');
+      return;
+    }
+    try {
+      await sendPasswordReset(email.trim());
+      setError('Password reset email sent.');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Unable to send the password reset email.');
+    }
   };
 
   return (
@@ -93,7 +86,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
 
         {/* Google OAuth Button */}
         <button
-          onClick={handleGoogleOAuth}
+          onClick={() => { void handleGoogleOAuth(); }}
           className="w-full bg-white border border-gray-300 hover:bg-gray-50 text-gray-700 font-bold py-2.5 px-4 rounded-xl text-sm shadow-sm transition-all flex items-center justify-center space-x-2 mb-4"
         >
           <Globe className="w-5 h-5 text-blue-500" />
@@ -160,6 +153,13 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
             {isSignUp ? 'Create Account' : 'Sign In'}
           </button>
         </form>
+
+        {error && <p role="alert" className="mt-3 text-xs font-semibold text-red-700">{error}</p>}
+        {!isSignUp && (
+          <button onClick={() => { void handlePasswordReset(); }} className="mt-3 w-full text-xs text-[#900C3F] font-bold hover:underline">
+            Forgot password?
+          </button>
+        )}
 
         <div className="text-center mt-4">
           <button

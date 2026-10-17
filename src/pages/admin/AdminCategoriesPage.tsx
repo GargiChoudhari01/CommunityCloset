@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import type { Category } from '../../types';
 import { ArrowLeft } from 'lucide-react';
 import { storage } from '../../services/storage';
+import { reportError } from '../../services/reportError';
 
 interface AdminCategoriesPageProps {
   categories: Category[];
@@ -18,7 +19,7 @@ export const AdminCategoriesPage: React.FC<AdminCategoriesPageProps> = ({
   const [type, setType] = useState<'tool' | 'material'>('tool');
   const [description, setDescription] = useState('');
 
-  const handleAdd = (e: React.FormEvent) => {
+  const handleAdd = async (e: React.FormEvent) => {
     e.preventDefault();
     const newCat: Category = {
       id: `cat-${Date.now()}`,
@@ -27,10 +28,14 @@ export const AdminCategoriesPage: React.FC<AdminCategoriesPageProps> = ({
       icon: 'Tag',
       description
     };
-    storage.saveCategories([...categories, newCat]);
-    setName('');
-    setDescription('');
-    onRefresh();
+    try {
+      await storage.saveCategories([...categories, newCat]);
+      setName('');
+      setDescription('');
+      onRefresh();
+    } catch (error) {
+      reportError(error);
+    }
   };
 
   return (

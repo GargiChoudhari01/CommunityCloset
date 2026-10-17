@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import type { Complaint } from '../../types';
 import { ArrowLeft } from 'lucide-react';
 import { storage } from '../../services/storage';
+import { reportError } from '../../services/reportError';
 
 interface AdminComplaintsPageProps {
   complaints: Complaint[];
@@ -16,9 +17,13 @@ export const AdminComplaintsPage: React.FC<AdminComplaintsPageProps> = ({
 }) => {
   const [notes, setNotes] = useState<{ [id: string]: string }>({});
 
-  const handleResolve = (id: string, status: Complaint['status']) => {
-    storage.updateComplaint(id, status, notes[id]);
-    onRefresh();
+  const handleResolve = async (id: string, status: Complaint['status']) => {
+    try {
+      await storage.updateComplaint(id, status, notes[id]);
+      onRefresh();
+    } catch (error) {
+      reportError(error);
+    }
   };
 
   return (
@@ -55,13 +60,13 @@ export const AdminComplaintsPage: React.FC<AdminComplaintsPageProps> = ({
                   className="flex-1 px-3 py-1.5 rounded-xl border border-gray-300 text-xs"
                 />
                 <button
-                  onClick={() => handleResolve(c.id, 'resolved')}
+                  onClick={() => { void handleResolve(c.id, 'resolved'); }}
                   className="bg-emerald-600 text-white px-4 py-1.5 rounded-xl text-xs font-bold shadow"
                 >
                   Mark Resolved
                 </button>
                 <button
-                  onClick={() => handleResolve(c.id, 'dismissed')}
+                  onClick={() => { void handleResolve(c.id, 'dismissed'); }}
                   className="bg-gray-100 text-gray-700 px-3 py-1.5 rounded-xl text-xs font-bold"
                 >
                   Dismiss

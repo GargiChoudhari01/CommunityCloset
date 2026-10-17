@@ -2,6 +2,7 @@ import React from 'react';
 import type { Report } from '../../types';
 import { ArrowLeft } from 'lucide-react';
 import { storage } from '../../services/storage';
+import { reportError } from '../../services/reportError';
 
 interface AdminReportsPageProps {
   reports: Report[];
@@ -10,9 +11,13 @@ interface AdminReportsPageProps {
 }
 
 export const AdminReportsPage: React.FC<AdminReportsPageProps> = ({ reports, onBack, onRefresh }) => {
-  const handleUpdate = (id: string, status: Report['status']) => {
-    storage.updateReport(id, status);
-    onRefresh();
+  const handleUpdate = async (id: string, status: Report['status']) => {
+    try {
+      await storage.updateReport(id, status);
+      onRefresh();
+    } catch (error) {
+      reportError(error);
+    }
   };
 
   return (
@@ -44,13 +49,13 @@ export const AdminReportsPage: React.FC<AdminReportsPageProps> = ({ reports, onB
 
               <div className="flex items-center space-x-2">
                 <button
-                  onClick={() => handleUpdate(r.id, 'action_taken')}
+                  onClick={() => { void handleUpdate(r.id, 'action_taken'); }}
                   className="bg-red-600 text-white px-3 py-1.5 rounded-xl text-xs font-bold shadow"
                 >
                   Remove Item
                 </button>
                 <button
-                  onClick={() => handleUpdate(r.id, 'dismissed')}
+                  onClick={() => { void handleUpdate(r.id, 'dismissed'); }}
                   className="bg-gray-100 text-gray-700 px-3 py-1.5 rounded-xl text-xs font-bold"
                 >
                   Dismiss

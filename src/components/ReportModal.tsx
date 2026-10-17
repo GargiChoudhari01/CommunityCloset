@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { X, Flag, AlertTriangle } from 'lucide-react';
 import type { ResourceItem, User, Report } from '../types';
 import { storage } from '../services/storage';
+import { reportError } from '../services/reportError';
 
 interface ReportModalProps {
   item: ResourceItem | null;
@@ -21,7 +22,7 @@ export const ReportModal: React.FC<ReportModalProps> = ({
 
   if (!item) return null;
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     const newReport: Report = {
       id: `rep-${Date.now()}`,
@@ -35,9 +36,13 @@ export const ReportModal: React.FC<ReportModalProps> = ({
       createdAt: new Date().toISOString()
     };
 
-    storage.addReport(newReport);
-    onReported();
-    onClose();
+    try {
+      await storage.addReport(newReport);
+      onReported();
+      onClose();
+    } catch (error) {
+      reportError(error);
+    }
   };
 
   return (

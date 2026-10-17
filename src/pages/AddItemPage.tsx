@@ -3,6 +3,7 @@ import { Sparkles, ArrowLeft } from 'lucide-react';
 import type { ResourceItem, User, Category } from '../types';
 import { storage } from '../services/storage';
 import { aiService } from '../services/aiService';
+import { reportError } from '../services/reportError';
 
 interface AddItemPageProps {
   currentUser: User;
@@ -42,7 +43,7 @@ export const AddItemPage: React.FC<AddItemPageProps> = ({
     }
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     const newItem: ResourceItem = {
       id: `item-${Date.now()}`,
@@ -68,9 +69,13 @@ export const AddItemPage: React.FC<AddItemPageProps> = ({
       createdAt: new Date().toISOString()
     };
 
-    storage.addItem(newItem);
-    onAdded(newItem);
-    onNavigate(`#item/${newItem.id}`);
+    try {
+      await storage.addItem(newItem);
+      onAdded(newItem);
+      onNavigate(`#item/${newItem.id}`);
+    } catch (error) {
+      reportError(error);
+    }
   };
 
   return (

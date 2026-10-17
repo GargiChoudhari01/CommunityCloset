@@ -179,6 +179,7 @@ export interface ImpactStats {
   kgCo2Diverted: number;
   moneySavedInr: number;
   activeLendersCount: number;
+  totalUsers: number;
   updatedAt: string;
 }
 

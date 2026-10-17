@@ -1,7 +1,7 @@
 /**
  * Client-Side Environment Configuration
- * Strictly exposes non-sensitive environment parameters.
- * AI Keys and Database credentials are managed on the server backend only.
+ * Exposes only public browser configuration. Supabase uses its publishable key
+ * in the client; service-role and AI secrets must never use VITE_ variables.
  */
 
 export const env = {

@@ -1,24 +1,14 @@
-import React, { useState } from 'react';
-import { Shield, Key, ArrowLeft } from 'lucide-react';
+import React from 'react';
+import { Shield, ArrowLeft } from 'lucide-react';
+import type { User } from '../../types';
 
 interface AdminLoginPageProps {
+  currentUser: User | null;
   onLoginSuccess: () => void;
   onNavigate: (path: string) => void;
 }
 
-export const AdminLoginPage: React.FC<AdminLoginPageProps> = ({ onLoginSuccess, onNavigate }) => {
-  const [adminKey, setAdminKey] = useState('');
-  const [error, setError] = useState('');
-
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (adminKey === 'admin123' || adminKey === 'admin') {
-      onLoginSuccess();
-    } else {
-      setError('Invalid Admin Authorization Key. Default key is "admin123".');
-    }
-  };
-
+export const AdminLoginPage: React.FC<AdminLoginPageProps> = ({ currentUser, onLoginSuccess, onNavigate }) => {
   return (
     <div className="min-h-[80vh] flex items-center justify-center px-4 animate-fade-in">
       <div className="bg-white p-8 rounded-3xl border border-purple-200 shadow-2xl max-w-md w-full relative">
@@ -37,30 +27,18 @@ export const AdminLoginPage: React.FC<AdminLoginPageProps> = ({ onLoginSuccess, 
           <p className="text-xs text-gray-500">Katraj & Pune South Community Moderation Suite</p>
         </div>
 
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div>
-            <label className="block text-xs font-bold text-gray-700 mb-1">Admin Passkey</label>
-            <div className="relative">
-              <Key className="w-4 h-4 text-gray-400 absolute left-3 top-3" />
-              <input
-                type="password"
-                required
-                value={adminKey}
-                onChange={(e) => setAdminKey(e.target.value)}
-                placeholder="Enter admin key (default: admin123)"
-                className="w-full pl-9 pr-4 py-2.5 rounded-xl border border-gray-300 text-sm focus:outline-none focus:border-purple-600"
-              />
-            </div>
-            {error && <p className="text-xs text-red-600 mt-1 font-semibold">{error}</p>}
-          </div>
-
+        {currentUser?.role === 'admin' ? (
           <button
-            type="submit"
+            onClick={onLoginSuccess}
             className="w-full bg-purple-700 hover:bg-purple-800 text-white font-extrabold py-3 rounded-xl text-sm shadow transition-all"
           >
-            Authenticate Admin Session
+            Continue to Admin Portal
           </button>
-        </form>
+        ) : (
+          <p role="alert" className="rounded-xl bg-purple-50 p-4 text-center text-sm text-purple-900">
+            Sign in with an account that has the trusted admin role in Supabase to access this area.
+          </p>
+        )}
       </div>
     </div>
   );

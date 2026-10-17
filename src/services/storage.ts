@@ -1,279 +1,296 @@
 import type { ResourceItem, User, BorrowRequest, Complaint, Report, NotificationItem, ChatMessage, Category, Review, UserBadge, ImpactStats } from '../types';
-import { DEFAULT_USERS, DEFAULT_ITEMS, DEFAULT_TRANSACTIONS, DEFAULT_CATEGORIES, DEFAULT_COMPLAINTS, DEFAULT_REPORTS, DEFAULT_NOTIFICATIONS, DEFAULT_MESSAGES } from './mockData';
+import { requireSupabase } from './supabase';
 
-const KEYS = {
-  USERS: 'community_closet_users_v4_clean',
-  ITEMS: 'community_closet_items_v4_clean',
-  TRANSACTIONS: 'community_closet_tx_v4_clean',
-  WISHLIST: 'community_closet_wishlist_v4_clean',
-  CATEGORIES: 'community_closet_categories_v4_clean',
-  COMPLAINTS: 'community_closet_complaints_v4_clean',
-  REPORTS: 'community_closet_reports_v4_clean',
-  NOTIFICATIONS: 'community_closet_notifications_v4_clean',
-  MESSAGES: 'community_closet_messages_v4_clean',
-  REVIEWS: 'community_closet_reviews_v4_clean',
-  BADGES: 'community_closet_badges_v4_clean',
-  IMPACT: 'community_closet_impact_v4_clean',
-  CURRENT_USER: 'community_closet_current_user_v4_clean'
+type Collection =
+  | 'users'
+  | 'items'
+  | 'transactions'
+  | 'wishlist'
+  | 'categories'
+  | 'complaints'
+  | 'reports'
+  | 'notifications'
+  | 'messages'
+  | 'reviews'
+  | 'badges';
+
+interface AppRecord {
+  collection: Collection;
+  record_id: string;
+  owner_id: string | null;
+  payload: Record<string, unknown>;
+}
+
+const cache: Record<Collection, unknown[]> = {
+  users: [],
+  items: [],
+  transactions: [],
+  wishlist: [],
+  categories: [],
+  complaints: [],
+  reports: [],
+  notifications: [],
+  messages: [],
+  reviews: [],
+  badges: [],
 };
 
+let currentUser: User | null = null;
+let impactStats: ImpactStats = {
+  itemsReused: 0,
+  kgCo2Diverted: 0,
+  moneySavedInr: 0,
+  activeLendersCount: 0,
+  totalUsers: 0,
+  updatedAt: new Date(0).toISOString(),
+};
+
+function byId<T extends { id: string }>(collection: Collection): T[] {
+  return cache[collection] as T[];
+}
+
+function authenticatedUser(): User {
+  if (!currentUser) throw new Error('You must be signed in to save data.');
+  return currentUser;
+}
+
+function currentUserId(): string {
+  return authenticatedUser().id;
+}
+
+function ownerFor(collection: Collection, value: Record<string, unknown>): string | null {
+  switch (collection) {
+    case 'users': return String(value.id);
+    case 'items': return String(value.userId);
+    case 'transactions': return String(value.requesterId);
+    case 'wishlist':
+    case 'complaints':
+    case 'badges': return String(value.userId);
+    case 'notifications': return currentUserId();
+    case 'reports': return String(value.reporterId);
+    case 'messages': return String(value.senderId);
+    case 'reviews': return String(value.reviewerId);
+    case 'categories': return null;
+  }
+}
+
+function toPayload(value: object): Record<string, unknown> {
+  return Object.fromEntries(Object.entries(value));
+}
+
+async function saveRecord(collection: Collection, id: string, value: Record<string, unknown>) {
+  const ownerId = ownerFor(collection, value);
+  const { error } = await requireSupabase()
+    .from('app_records')
+    .upsert({
+      collection,
+      record_id: id,
+      owner_id: ownerId,
+      payload: value,
+    }, { onConflict: 'collection,record_id' });
+  if (error) throw error;
+}
+
+async function updateRecord(collection: Collection, id: string, value: Record<string, unknown>) {
+  const { error } = await requireSupabase()
+    .from('app_records')
+    .update({
+      owner_id: ownerFor(collection, value),
+      payload: value,
+    })
+    .eq('collection', collection)
+    .eq('record_id', id);
+  if (error) throw error;
+}
+
+async function deleteRecord(collection: Collection, id: string) {
+  const { error } = await requireSupabase()
+    .from('app_records')
+    .delete()
+    .eq('collection', collection)
+    .eq('record_id', id);
+  if (error) throw error;
+}
+
+function setCache<T>(collection: Collection, values: T[]) {
+  cache[collection] = values;
+}
+
 export const storage = {
-  // Users
-  getUsers: (): User[] => {
-    const raw = localStorage.getItem(KEYS.USERS);
-    return raw ? JSON.parse(raw) : DEFAULT_USERS;
-  },
-  saveUsers: (users: User[]) => {
-    localStorage.setItem(KEYS.USERS, JSON.stringify(users));
-  },
-  getCurrentUser: (): User | null => {
-    const raw = localStorage.getItem(KEYS.CURRENT_USER);
-    if (raw) return JSON.parse(raw);
-    return null;
-  },
-  setCurrentUser: (user: User) => {
-    localStorage.setItem(KEYS.CURRENT_USER, JSON.stringify(user));
-  },
-  clearCurrentUser: () => {
-    localStorage.removeItem(KEYS.CURRENT_USER);
-  },
-
-  // Items / Listings
-  getItems: (): ResourceItem[] => {
-    const raw = localStorage.getItem(KEYS.ITEMS);
-    return raw ? JSON.parse(raw) : DEFAULT_ITEMS;
-  },
-  saveItems: (items: ResourceItem[]) => {
-    localStorage.setItem(KEYS.ITEMS, JSON.stringify(items));
-  },
-  addItem: (item: ResourceItem) => {
-    const items = storage.getItems();
-    items.unshift(item);
-    storage.saveItems(items);
-
-    // Award first_share badge if user's first listing
-    const userBadges = storage.getBadges(item.userId);
-    if (!userBadges.some(b => b.badgeType === 'first_share')) {
-      storage.addBadge({
-        id: `bdg-${Date.now()}`,
-        userId: item.userId,
-        badgeType: 'first_share',
-        title: 'First Share Hero',
-        description: 'Shared your first resource with Katraj neighbors',
-        icon: 'Sparkles',
-        earnedAt: new Date().toISOString()
-      });
+  async load(user: User): Promise<void> {
+    currentUser = user;
+    const client = requireSupabase();
+    const records: AppRecord[] = [];
+    for (let offset = 0; ; offset += 1000) {
+      const { data, error } = await client
+        .from('app_records')
+        .select('collection,record_id,owner_id,payload')
+        .range(offset, offset + 999);
+      if (error) throw error;
+      const page = (data || []) as AppRecord[];
+      records.push(...page);
+      if (page.length < 1000) break;
     }
+
+    for (const collection of Object.keys(cache) as Collection[]) {
+      const collectionRecords = records.filter((row) => row.collection === collection);
+      setCache(collection, collectionRecords.map((row) => row.payload));
+    }
+    const { data: stats, error: statsError } = await client.rpc('get_communitycloset_impact');
+    if (statsError) throw statsError;
+    impactStats = stats as ImpactStats;
+
+    const profiles = byId<User>('users');
+    if (!profiles.some((profile) => profile.id === user.id)) {
+      await saveRecord('users', user.id, toPayload(user));
+      setCache('users', [user, ...profiles]);
+    }
+  },
+
+  setCurrentUser(user: User | null) {
+    currentUser = user;
+    if (user) {
+      const users = byId<User>('users');
+      setCache('users', users.some((entry) => entry.id === user.id)
+        ? users.map((entry) => entry.id === user.id ? user : entry)
+        : [user, ...users]);
+    }
+  },
+  getCurrentUser: () => currentUser,
+  clearCurrentUser: () => { currentUser = null; },
+
+  getUsers: () => byId<User>('users'),
+  async saveUsers(users: User[]) {
+    for (const user of users) await saveRecord('users', user.id, toPayload(user));
+    setCache('users', users);
+    await storage.load(authenticatedUser());
+  },
+  async updateUser(user: User) {
+    await updateRecord('users', user.id, toPayload(user));
+    setCache('users', byId<User>('users').map((entry) => entry.id === user.id ? user : entry));
+    if (currentUser?.id === user.id) currentUser = user;
+  },
+
+  getItems: () => byId<ResourceItem>('items'),
+  async addItem(item: ResourceItem) {
+    const user = authenticatedUser();
+    await saveRecord('items', item.id, toPayload(item));
+    setCache('items', [item, ...byId<ResourceItem>('items')]);
+    await storage.load(user);
     return item;
   },
-  updateItem: (id: string, updates: Partial<ResourceItem>) => {
-    const items = storage.getItems();
-    const index = items.findIndex(i => i.id === id);
-    if (index !== -1) {
-      items[index] = { ...items[index], ...updates };
-      storage.saveItems(items);
+  async updateItem(id: string, updates: Partial<ResourceItem>) {
+    const item = byId<ResourceItem>('items').find((entry) => entry.id === id);
+    if (!item) return;
+    const updated = { ...item, ...updates };
+    await updateRecord('items', id, toPayload(updated));
+    setCache('items', byId<ResourceItem>('items').map((entry) => entry.id === id ? updated : entry));
+  },
+  async deleteItem(id: string) {
+    await deleteRecord('items', id);
+    setCache('items', byId<ResourceItem>('items').filter((entry) => entry.id !== id));
+    await storage.load(authenticatedUser());
+  },
+
+  getTransactions: () => byId<BorrowRequest>('transactions'),
+  async addTransaction(transaction: BorrowRequest) {
+    await saveRecord('transactions', transaction.id, toPayload(transaction));
+    setCache('transactions', [transaction, ...byId<BorrowRequest>('transactions')]);
+    return transaction;
+  },
+  async updateTransaction(id: string, status: BorrowRequest['status']) {
+    const transaction = byId<BorrowRequest>('transactions').find((entry) => entry.id === id);
+    if (!transaction) return;
+    const updated = { ...transaction, status, updatedAt: new Date().toISOString() };
+    await updateRecord('transactions', id, toPayload(updated));
+    setCache('transactions', byId<BorrowRequest>('transactions').map((entry) => entry.id === id ? updated : entry));
+    await storage.load(authenticatedUser());
+  },
+
+  getReviews: () => byId<Review>('reviews'),
+  async addReview(review: Review) {
+    await saveRecord('reviews', review.id, toPayload(review));
+    setCache('reviews', [review, ...byId<Review>('reviews')]);
+    const userReviews = byId<Review>('reviews').filter((entry) => entry.revieweeId === review.revieweeId);
+    const profile = byId<User>('users').find((entry) => entry.id === review.revieweeId);
+    if (profile) {
+      await storage.updateUser({
+        ...profile,
+        ratingAvg: Math.round((userReviews.reduce((total, entry) => total + entry.rating, 0) / userReviews.length) * 10) / 10,
+        reviewsCount: userReviews.length,
+      });
     }
-  },
-  deleteItem: (id: string) => {
-    const items = storage.getItems().filter(i => i.id !== id);
-    storage.saveItems(items);
-  },
-
-  // Requests / Transactions
-  getTransactions: (): BorrowRequest[] => {
-    const raw = localStorage.getItem(KEYS.TRANSACTIONS);
-    return raw ? JSON.parse(raw) : DEFAULT_TRANSACTIONS;
-  },
-  saveTransactions: (txs: BorrowRequest[]) => {
-    localStorage.setItem(KEYS.TRANSACTIONS, JSON.stringify(txs));
-  },
-  addTransaction: (tx: BorrowRequest) => {
-    const txs = storage.getTransactions();
-    txs.unshift(tx);
-    storage.saveTransactions(txs);
-    return tx;
-  },
-  updateTransaction: (id: string, status: BorrowRequest['status']) => {
-    const txs = storage.getTransactions();
-    const idx = txs.findIndex(t => t.id === id);
-    if (idx !== -1) {
-      txs[idx].status = status;
-      txs[idx].updatedAt = new Date().toISOString();
-      storage.saveTransactions(txs);
-
-      // Award reuse_hero badge on completed transaction
-      if (status === 'completed') {
-        const borrowerId = txs[idx].requesterId;
-        const userBadges = storage.getBadges(borrowerId);
-        if (!userBadges.some(b => b.badgeType === 'reuse_hero')) {
-          storage.addBadge({
-            id: `bdg-${Date.now()}`,
-            userId: borrowerId,
-            badgeType: 'reuse_hero',
-            title: 'Reuse Hero',
-            description: 'Completed a resource borrow and prevented landfill waste',
-            icon: 'Leaf',
-            earnedAt: new Date().toISOString()
-          });
-        }
-      }
-    }
-  },
-
-  // Reviews
-  getReviews: (): Review[] => {
-    const raw = localStorage.getItem(KEYS.REVIEWS);
-    return raw ? JSON.parse(raw) : [];
-  },
-  addReview: (review: Review) => {
-    const reviews = storage.getReviews();
-    reviews.unshift(review);
-    localStorage.setItem(KEYS.REVIEWS, JSON.stringify(reviews));
-
-    // Recalculate reviewee average rating
-    const userReviews = reviews.filter(r => r.revieweeId === review.revieweeId);
-    const avg = Math.round((userReviews.reduce((acc, curr) => acc + curr.rating, 0) / userReviews.length) * 10) / 10;
-    
-    const users = storage.getUsers();
-    const uIdx = users.findIndex(u => u.id === review.revieweeId);
-    if (uIdx !== -1) {
-      users[uIdx].ratingAvg = avg;
-      users[uIdx].reviewsCount = userReviews.length;
-      storage.saveUsers(users);
-    }
-
     return review;
   },
 
-  // Badges
-  getBadges: (userId?: string): UserBadge[] => {
-    const raw = localStorage.getItem(KEYS.BADGES);
-    const allBadges: UserBadge[] = raw ? JSON.parse(raw) : [];
-    if (userId) return allBadges.filter(b => b.userId === userId);
-    return allBadges;
-  },
-  addBadge: (badge: UserBadge) => {
-    const badges = storage.getBadges();
-    if (!badges.some(b => b.userId === badge.userId && b.badgeType === badge.badgeType)) {
-      badges.unshift(badge);
-      localStorage.setItem(KEYS.BADGES, JSON.stringify(badges));
+  getBadges: (userId?: string) => byId<UserBadge>('badges').filter((badge) => !userId || badge.userId === userId),
+  getWishlistIds: () => byId<{ id: string }>('wishlist').map((entry) => entry.id),
+  async toggleWishlist(listingId: string) {
+    const existing = byId<{ id: string; userId: string }>('wishlist').find((entry) => entry.id === listingId);
+    if (existing) {
+      await deleteRecord('wishlist', listingId);
+      setCache('wishlist', byId('wishlist').filter((entry) => (entry as { id: string }).id !== listingId));
+      return false;
     }
-    return badge;
+    const entry = { id: listingId, userId: currentUserId() };
+    await saveRecord('wishlist', listingId, entry);
+    setCache('wishlist', [...byId('wishlist'), entry]);
+    return true;
   },
 
-  // Wishlist
-  getWishlistIds: (): string[] => {
-    const raw = localStorage.getItem(KEYS.WISHLIST);
-    return raw ? JSON.parse(raw) : [];
+  getComplaints: () => byId<Complaint>('complaints'),
+  async addComplaint(complaint: Complaint) {
+    await saveRecord('complaints', complaint.id, toPayload(complaint));
+    setCache('complaints', [complaint, ...byId<Complaint>('complaints')]);
+    return complaint;
   },
-  toggleWishlist: (listingId: string): boolean => {
-    const wishlist = storage.getWishlistIds();
-    const exists = wishlist.includes(listingId);
-    let next: string[];
-    if (exists) {
-      next = wishlist.filter(id => id !== listingId);
-    } else {
-      next = [...wishlist, listingId];
-    }
-    localStorage.setItem(KEYS.WISHLIST, JSON.stringify(next));
-    return !exists;
+  async updateComplaint(id: string, status: Complaint['status'], adminNotes?: string) {
+    const complaint = byId<Complaint>('complaints').find((entry) => entry.id === id);
+    if (!complaint) return;
+    const updated = { ...complaint, status, ...(adminNotes !== undefined ? { adminNotes } : {}) };
+    await updateRecord('complaints', id, toPayload(updated));
+    setCache('complaints', byId<Complaint>('complaints').map((entry) => entry.id === id ? updated : entry));
   },
 
-  // Complaints
-  getComplaints: (): Complaint[] => {
-    const raw = localStorage.getItem(KEYS.COMPLAINTS);
-    return raw ? JSON.parse(raw) : DEFAULT_COMPLAINTS;
+  getReports: () => byId<Report>('reports'),
+  async addReport(report: Report) {
+    await saveRecord('reports', report.id, toPayload(report));
+    setCache('reports', [report, ...byId<Report>('reports')]);
+    return report;
   },
-  addComplaint: (cmp: Complaint) => {
-    const complaints = storage.getComplaints();
-    complaints.unshift(cmp);
-    localStorage.setItem(KEYS.COMPLAINTS, JSON.stringify(complaints));
-    return cmp;
-  },
-  updateComplaint: (id: string, status: Complaint['status'], adminNotes?: string) => {
-    const complaints = storage.getComplaints();
-    const idx = complaints.findIndex(c => c.id === id);
-    if (idx !== -1) {
-      complaints[idx].status = status;
-      if (adminNotes !== undefined) complaints[idx].adminNotes = adminNotes;
-      localStorage.setItem(KEYS.COMPLAINTS, JSON.stringify(complaints));
-    }
+  async updateReport(id: string, status: Report['status']) {
+    const report = byId<Report>('reports').find((entry) => entry.id === id);
+    if (!report) return;
+    const updated = { ...report, status };
+    await updateRecord('reports', id, toPayload(updated));
+    setCache('reports', byId<Report>('reports').map((entry) => entry.id === id ? updated : entry));
   },
 
-  // Reports
-  getReports: (): Report[] => {
-    const raw = localStorage.getItem(KEYS.REPORTS);
-    return raw ? JSON.parse(raw) : DEFAULT_REPORTS;
-  },
-  addReport: (rep: Report) => {
-    const reports = storage.getReports();
-    reports.unshift(rep);
-    localStorage.setItem(KEYS.REPORTS, JSON.stringify(reports));
-    return rep;
-  },
-  updateReport: (id: string, status: Report['status']) => {
-    const reports = storage.getReports();
-    const idx = reports.findIndex(r => r.id === id);
-    if (idx !== -1) {
-      reports[idx].status = status;
-      localStorage.setItem(KEYS.REPORTS, JSON.stringify(reports));
-    }
+  getCategories: () => byId<Category>('categories'),
+  async saveCategories(categories: Category[]) {
+    for (const category of categories) await saveRecord('categories', category.id, toPayload(category));
+    setCache('categories', categories);
   },
 
-  // Categories
-  getCategories: (): Category[] => {
-    const raw = localStorage.getItem(KEYS.CATEGORIES);
-    return raw ? JSON.parse(raw) : DEFAULT_CATEGORIES;
+  getNotifications: () => byId<NotificationItem>('notifications'),
+  async addNotification(notification: NotificationItem) {
+    await saveRecord('notifications', notification.id, toPayload(notification));
+    setCache('notifications', [notification, ...byId<NotificationItem>('notifications')]);
   },
-  saveCategories: (categories: Category[]) => {
-    localStorage.setItem(KEYS.CATEGORIES, JSON.stringify(categories));
-  },
-
-  // Notifications
-  getNotifications: (): NotificationItem[] => {
-    const raw = localStorage.getItem(KEYS.NOTIFICATIONS);
-    return raw ? JSON.parse(raw) : DEFAULT_NOTIFICATIONS;
-  },
-  addNotification: (notif: NotificationItem) => {
-    const notifs = storage.getNotifications();
-    notifs.unshift(notif);
-    localStorage.setItem(KEYS.NOTIFICATIONS, JSON.stringify(notifs));
-  },
-  markNotificationRead: (id: string) => {
-    const notifs = storage.getNotifications();
-    const idx = notifs.findIndex(n => n.id === id);
-    if (idx !== -1) {
-      notifs[idx].readStatus = true;
-      localStorage.setItem(KEYS.NOTIFICATIONS, JSON.stringify(notifs));
-    }
+  async markNotificationRead(id: string) {
+    const notification = byId<NotificationItem>('notifications').find((entry) => entry.id === id);
+    if (!notification) return;
+    const updated = { ...notification, readStatus: true };
+    await updateRecord('notifications', id, toPayload(updated));
+    setCache('notifications', byId<NotificationItem>('notifications').map((entry) => entry.id === id ? updated : entry));
   },
 
-  // Chat Messages
-  getMessages: (): ChatMessage[] => {
-    const raw = localStorage.getItem(KEYS.MESSAGES);
-    return raw ? JSON.parse(raw) : DEFAULT_MESSAGES;
-  },
-  addMessage: (msg: ChatMessage) => {
-    const msgs = storage.getMessages();
-    msgs.push(msg);
-    localStorage.setItem(KEYS.MESSAGES, JSON.stringify(msgs));
-    return msg;
+  getMessages: () => byId<ChatMessage>('messages'),
+  async addMessage(message: ChatMessage) {
+    await saveRecord('messages', message.id, toPayload(message));
+    setCache('messages', [...byId<ChatMessage>('messages'), message]);
+    return message;
   },
 
-  // Impact Stats - computed dynamically from completed transactions
-  getImpactStats: (): ImpactStats => {
-    const completedTx = storage.getTransactions().filter(t => t.status === 'completed');
-    const itemsReused = completedTx.length;
-    const kgCo2Diverted = Math.round(itemsReused * 2.8 * 10) / 10;
-    const moneySavedInr = itemsReused * 450;
-    const activeLenders = new Set(storage.getItems().map(i => i.userId)).size;
-
-    return {
-      itemsReused,
-      kgCo2Diverted,
-      moneySavedInr,
-      activeLendersCount: activeLenders,
-      updatedAt: new Date().toISOString()
-    };
-  }
+  getImpactStats: (): ImpactStats => impactStats,
 };

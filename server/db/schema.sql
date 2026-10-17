@@ -1,152 +1,353 @@
--- CommunityCloset Relational Database Schema (PostgreSQL)
--- Focus: Katraj, Pune, Maharashtra
+-- Supabase schema for CommunityCloset.
+-- Apply this file in the Supabase SQL Editor. App data is stored as JSONB
+-- records because the UI uses denormalized display models for its collections.
 
--- 1. Users Collection / Table
-CREATE TABLE IF NOT EXISTS users (
-  id VARCHAR(64) PRIMARY KEY,
-  email VARCHAR(255) UNIQUE NOT NULL,
-  password_hash VARCHAR(255),
-  name VARCHAR(255) NOT NULL,
-  role VARCHAR(32) DEFAULT 'user', -- 'user' | 'admin'
-  avatar_url TEXT,
-  phone VARCHAR(32),
-  bio TEXT,
-  location_address VARCHAR(255) DEFAULT 'Katraj, Pune, MH',
-  lat NUMERIC(9,6) DEFAULT 18.4575,
-  lng NUMERIC(9,6) DEFAULT 73.8508,
-  eco_points INT DEFAULT 0,
-  co2_saved_kg NUMERIC(8,2) DEFAULT 0.0,
-  verified BOOLEAN DEFAULT true,
-  status VARCHAR(32) DEFAULT 'active', -- 'active' | 'suspended' | 'banned'
-  rating_avg NUMERIC(3,2) DEFAULT 5.0,
-  reviews_count INT DEFAULT 0,
-  items_shared INT DEFAULT 0,
-  items_borrowed INT DEFAULT 0,
-  created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+create table if not exists public.app_records (
+  collection text not null check (collection in (
+    'users', 'items', 'transactions', 'wishlist', 'categories',
+    'complaints', 'reports', 'notifications', 'messages', 'reviews', 'badges'
+  )),
+  record_id text not null,
+  owner_id uuid references auth.users(id) on delete cascade,
+  payload jsonb not null,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  primary key (collection, record_id)
 );
 
--- 2. Categories Table
-CREATE TABLE IF NOT EXISTS categories (
-  id VARCHAR(64) PRIMARY KEY,
-  name VARCHAR(128) NOT NULL,
-  type VARCHAR(32) NOT NULL, -- 'tool' | 'material'
-  icon VARCHAR(64),
-  description TEXT,
-  created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+create index if not exists app_records_owner_collection_idx
+  on public.app_records (owner_id, collection);
+create index if not exists app_records_payload_gin_idx
+  on public.app_records using gin (payload);
+
+alter table public.app_records enable row level security;
+
+grant select, insert, update, delete on public.app_records to authenticated;
+revoke all on public.app_records from anon, public;
+
+create or replace function public.set_communitycloset_record_updated_at()
+returns trigger
+language plpgsql
+as $$
+begin
+  new.updated_at := now();
+  return new;
+end;
+$$;
+
+drop trigger if exists set_communitycloset_record_updated_at on public.app_records;
+create trigger set_communitycloset_record_updated_at
+before update on public.app_records
+for each row execute procedure public.set_communitycloset_record_updated_at();
+
+create or replace function public.is_communitycloset_admin()
+returns boolean
+language sql
+stable
+as $$
+  select coalesce(auth.jwt() -> 'app_metadata' ->> 'role', '') = 'admin';
+$$;
+
+create or replace function public.is_communitycloset_user_active()
+returns boolean
+language sql
+stable
+security definer
+set search_path = ''
+as $$
+  select coalesce((
+    select records.payload ->> 'status' = 'active'
+    from public.app_records as records
+    where records.collection = 'users'
+      and records.record_id = auth.uid()::text
+  ), false);
+$$;
+
+create or replace function public.get_communitycloset_impact()
+returns jsonb
+language plpgsql
+stable
+security definer
+set search_path = ''
+as $$
+begin
+  if auth.uid() is null
+     or (
+       not public.is_communitycloset_admin()
+       and not public.is_communitycloset_user_active()
+     ) then
+    raise exception 'An active account is required to view community metrics'
+      using errcode = '42501';
+  end if;
+
+  return (
+    select jsonb_build_object(
+      'itemsReused', (
+        select count(*)
+        from public.app_records
+        where collection = 'transactions'
+          and payload ->> 'status' = 'completed'
+      ),
+      'kgCo2Diverted', round((
+        select count(*) * 2.8
+        from public.app_records
+        where collection = 'transactions'
+          and payload ->> 'status' = 'completed'
+      ), 1),
+      'moneySavedInr', (
+        select count(*) * 450
+        from public.app_records
+        where collection = 'transactions'
+          and payload ->> 'status' = 'completed'
+      ),
+      'activeLendersCount', (
+        select count(distinct payload ->> 'userId')
+        from public.app_records
+        where collection = 'items'
+      ),
+      'totalUsers', (
+        select count(*)
+        from public.app_records
+        where collection = 'users'
+          and payload ->> 'status' = 'active'
+      ),
+      'updatedAt', now()
+    )
+  );
+end;
+$$;
+
+revoke all on function public.get_communitycloset_impact() from public, anon;
+grant execute on function public.get_communitycloset_impact() to authenticated;
+
+create or replace function public.validate_communitycloset_record_owner()
+returns trigger
+language plpgsql
+as $$
+declare
+  expected_owner uuid;
+begin
+  case new.collection
+    when 'users' then expected_owner := (new.payload ->> 'id')::uuid;
+    when 'items' then expected_owner := (new.payload ->> 'userId')::uuid;
+    when 'transactions' then expected_owner := (new.payload ->> 'requesterId')::uuid;
+    when 'wishlist' then expected_owner := (new.payload ->> 'userId')::uuid;
+    when 'complaints' then expected_owner := (new.payload ->> 'userId')::uuid;
+    when 'reports' then expected_owner := (new.payload ->> 'reporterId')::uuid;
+    when 'messages' then expected_owner := (new.payload ->> 'senderId')::uuid;
+    when 'reviews' then expected_owner := (new.payload ->> 'reviewerId')::uuid;
+    when 'badges' then expected_owner := (new.payload ->> 'userId')::uuid;
+    when 'notifications' then expected_owner := auth.uid();
+    when 'categories' then expected_owner := null;
+  end case;
+
+  if new.owner_id is distinct from expected_owner then
+    raise exception 'Record owner does not match its payload';
+  end if;
+  if new.collection = 'users'
+     and not public.is_communitycloset_admin()
+     and (
+       new.payload ->> 'role' is distinct from 'user'
+       or new.payload ->> 'status' is distinct from 'active'
+     ) then
+    raise exception 'Only an administrator can change profile role or status';
+  end if;
+  return new;
+end;
+$$;
+
+drop trigger if exists validate_communitycloset_record_owner on public.app_records;
+create trigger validate_communitycloset_record_owner
+before insert or update on public.app_records
+for each row execute procedure public.validate_communitycloset_record_owner();
+
+drop policy if exists "read app records" on public.app_records;
+create policy "read app records"
+on public.app_records for select to authenticated
+using (
+  public.is_communitycloset_admin()
+  or (collection = 'users' and owner_id = auth.uid())
+  or (
+    public.is_communitycloset_user_active()
+    and (
+      collection = 'categories'
+      or collection = 'items'
+      or collection = 'reviews'
+      or collection = 'badges'
+      or owner_id = auth.uid()
+      or (collection = 'transactions' and payload ->> 'ownerId' = auth.uid()::text)
+      or (collection = 'messages' and payload ->> 'receiverId' = auth.uid()::text)
+      or (collection = 'notifications' and payload ->> 'userId' = auth.uid()::text)
+      or (collection = 'reviews' and payload ->> 'revieweeId' = auth.uid()::text)
+    )
+  )
 );
 
--- 3. Listings Table
-CREATE TABLE IF NOT EXISTS listings (
-  id VARCHAR(64) PRIMARY KEY,
-  owner_id VARCHAR(64) REFERENCES users(id) ON DELETE CASCADE,
-  category_id VARCHAR(64) REFERENCES categories(id) ON DELETE SET NULL,
-  title VARCHAR(255) NOT NULL,
-  description TEXT NOT NULL,
-  resource_type VARCHAR(32) NOT NULL, -- 'borrow' | 'giveaway' | 'exchange' | 'donate'
-  item_kind VARCHAR(32) DEFAULT 'tool', -- 'tool' | 'material'
-  status VARCHAR(32) DEFAULT 'active', -- 'active' | 'borrowed' | 'claimed' | 'removed'
-  condition VARCHAR(64) NOT NULL, -- 'Like New' | 'Good' | 'Fair'
-  quantity INT DEFAULT 1,
-  deposit_amount NUMERIC(8,2) DEFAULT 0,
-  max_duration_days INT DEFAULT 7,
-  location_name VARCHAR(255) DEFAULT 'Katraj, Pune',
-  lat NUMERIC(9,6) DEFAULT 18.4575,
-  lng NUMERIC(9,6) DEFAULT 73.8508,
-  images TEXT[] DEFAULT '{}',
-  exchange_preference TEXT,
-  featured BOOLEAN DEFAULT false,
-  views_count INT DEFAULT 0,
-  created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+drop policy if exists "insert owned app records" on public.app_records;
+create policy "insert owned app records"
+on public.app_records for insert to authenticated
+with check (
+  public.is_communitycloset_admin()
+  or (
+    public.is_communitycloset_user_active()
+    and owner_id = auth.uid()
+    and collection not in ('categories', 'badges')
+    and (
+        collection <> 'users'
+        or (payload ->> 'role' = 'user' and payload ->> 'status' = 'active')
+    )
+  )
 );
 
--- 4. Requests (Borrows / Claims / Exchanges) Table
-CREATE TABLE IF NOT EXISTS requests (
-  id VARCHAR(64) PRIMARY KEY,
-  listing_id VARCHAR(64) REFERENCES listings(id) ON DELETE CASCADE,
-  requester_id VARCHAR(64) REFERENCES users(id) ON DELETE CASCADE,
-  owner_id VARCHAR(64) REFERENCES users(id) ON DELETE CASCADE,
-  type VARCHAR(32) DEFAULT 'borrow', -- 'borrow' | 'material' | 'exchange' | 'collect'
-  status VARCHAR(32) DEFAULT 'pending', -- 'pending' | 'accepted' | 'declined' | 'completed' | 'cancelled'
-  message TEXT,
-  start_date DATE,
-  end_date DATE,
-  deposit_paid NUMERIC(8,2) DEFAULT 0,
-  created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-  updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+drop policy if exists "update owned app records" on public.app_records;
+create policy "update owned app records"
+on public.app_records for update to authenticated
+using (
+  public.is_communitycloset_admin()
+  or (
+    public.is_communitycloset_user_active()
+    and (
+      owner_id = auth.uid()
+      or (collection = 'transactions' and payload ->> 'ownerId' = auth.uid()::text)
+      or (collection = 'messages' and payload ->> 'receiverId' = auth.uid()::text)
+      or (collection = 'notifications' and payload ->> 'userId' = auth.uid()::text)
+    )
+  )
+)
+with check (
+  public.is_communitycloset_admin()
+  or (
+    public.is_communitycloset_user_active()
+    and
+    owner_id = auth.uid()
+    and collection not in ('categories', 'badges')
+    and (
+      collection <> 'users'
+      or (payload ->> 'role' = 'user' and payload ->> 'status' = 'active')
+    )
+  )
+  or (
+    public.is_communitycloset_user_active()
+    and (
+      (collection = 'transactions' and payload ->> 'ownerId' = auth.uid()::text)
+      or (collection = 'messages' and payload ->> 'receiverId' = auth.uid()::text)
+      or (collection = 'notifications' and payload ->> 'userId' = auth.uid()::text)
+    )
+  )
 );
 
--- 5. Messages Table
-CREATE TABLE IF NOT EXISTS messages (
-  id VARCHAR(64) PRIMARY KEY,
-  request_id VARCHAR(64) REFERENCES requests(id) ON DELETE CASCADE,
-  sender_id VARCHAR(64) REFERENCES users(id) ON DELETE CASCADE,
-  receiver_id VARCHAR(64) REFERENCES users(id) ON DELETE CASCADE,
-  text TEXT NOT NULL,
-  read_status BOOLEAN DEFAULT false,
-  created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+drop policy if exists "delete owned app records" on public.app_records;
+create policy "delete owned app records"
+on public.app_records for delete to authenticated
+using (
+  public.is_communitycloset_admin()
+  or (
+    public.is_communitycloset_user_active()
+    and owner_id = auth.uid()
+    and collection not in ('categories', 'badges')
+  )
 );
 
--- 6. Notifications Table
-CREATE TABLE IF NOT EXISTS notifications (
-  id VARCHAR(64) PRIMARY KEY,
-  user_id VARCHAR(64) REFERENCES users(id) ON DELETE CASCADE,
-  type VARCHAR(64) NOT NULL, -- 'request' | 'approval' | 'message' | 'system' | 'badge' | 'review'
-  message TEXT NOT NULL,
-  related_listing_id VARCHAR(64) REFERENCES listings(id) ON DELETE SET NULL,
-  read_status BOOLEAN DEFAULT false,
-  created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-);
+create or replace function public.award_communitycloset_badges()
+returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  awarded_user uuid;
+  awarded_type text;
+  awarded_title text;
+  awarded_description text;
+  awarded_icon text;
+begin
+  if new.collection = 'items' then
+    awarded_user := (new.payload ->> 'userId')::uuid;
+    awarded_type := 'first_share';
+    awarded_title := 'First Share Hero';
+    awarded_description := 'Shared your first resource with Katraj neighbors';
+    awarded_icon := 'Sparkles';
+  elsif new.collection = 'transactions' and new.payload ->> 'status' = 'completed' then
+    awarded_user := (new.payload ->> 'requesterId')::uuid;
+    awarded_type := 'reuse_hero';
+    awarded_title := 'Reuse Hero';
+    awarded_description := 'Completed a resource borrow and prevented landfill waste';
+    awarded_icon := 'Leaf';
+  else
+    return new;
+  end if;
 
--- 7. Reviews Table
-CREATE TABLE IF NOT EXISTS reviews (
-  id VARCHAR(64) PRIMARY KEY,
-  listing_id VARCHAR(64) REFERENCES listings(id) ON DELETE SET NULL,
-  reviewer_id VARCHAR(64) REFERENCES users(id) ON DELETE CASCADE,
-  reviewee_id VARCHAR(64) REFERENCES users(id) ON DELETE CASCADE,
-  rating INT CHECK (rating >= 1 AND rating <= 5),
-  comment TEXT,
-  created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-);
+  insert into public.app_records (collection, record_id, owner_id, payload)
+  values (
+    'badges',
+    awarded_user::text || ':' || awarded_type,
+    awarded_user,
+    jsonb_build_object(
+      'id', awarded_user::text || ':' || awarded_type,
+      'userId', awarded_user,
+      'badgeType', awarded_type,
+      'title', awarded_title,
+      'description', awarded_description,
+      'icon', awarded_icon,
+      'earnedAt', now()
+    )
+  )
+  on conflict (collection, record_id) do nothing;
+  return new;
+end;
+$$;
 
--- 8. Wishlist Table
-CREATE TABLE IF NOT EXISTS wishlist (
-  id VARCHAR(64) PRIMARY KEY,
-  user_id VARCHAR(64) REFERENCES users(id) ON DELETE CASCADE,
-  listing_id VARCHAR(64) REFERENCES listings(id) ON DELETE CASCADE,
-  item_name VARCHAR(255),
-  created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-  UNIQUE(user_id, listing_id)
-);
+drop trigger if exists award_communitycloset_badges on public.app_records;
+create trigger award_communitycloset_badges
+after insert or update on public.app_records
+for each row execute procedure public.award_communitycloset_badges();
 
--- 9. Badges Table
-CREATE TABLE IF NOT EXISTS badges (
-  id VARCHAR(64) PRIMARY KEY,
-  user_id VARCHAR(64) REFERENCES users(id) ON DELETE CASCADE,
-  badge_type VARCHAR(64) NOT NULL, -- 'first_share' | 'reuse_hero' | 'community_helper' | 'resource_champion'
-  title VARCHAR(255) NOT NULL,
-  description TEXT,
-  earned_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-  UNIQUE(user_id, badge_type)
-);
+create or replace function public.create_communitycloset_profile()
+returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  profile jsonb;
+begin
+  profile := jsonb_build_object(
+    'id', new.id,
+    'email', new.email,
+    'name', coalesce(new.raw_user_meta_data ->> 'name', split_part(new.email, '@', 1)),
+    'role', 'user',
+    'avatar', new.raw_user_meta_data ->> 'avatar_url',
+    'bio', new.raw_user_meta_data ->> 'bio',
+    'locationAddress', coalesce(new.raw_user_meta_data ->> 'location_address', 'Katraj, Pune, Maharashtra'),
+    'lat', 18.4575,
+    'lng', 73.8508,
+    'ecoPoints', 100,
+    'co2SavedKg', 0,
+    'verified', new.email_confirmed_at is not null,
+    'status', 'active',
+    'createdAt', new.created_at
+  );
 
--- 10. Reports Table (for Admin)
-CREATE TABLE IF NOT EXISTS reports (
-  id VARCHAR(64) PRIMARY KEY,
-  listing_id VARCHAR(64) REFERENCES listings(id) ON DELETE CASCADE,
-  user_id VARCHAR(64) REFERENCES users(id) ON DELETE CASCADE,
-  reporter_id VARCHAR(64) REFERENCES users(id) ON DELETE CASCADE,
-  reason VARCHAR(128) NOT NULL,
-  details TEXT,
-  status VARCHAR(32) DEFAULT 'open', -- 'open' | 'resolved'
-  created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-);
+  insert into public.app_records (collection, record_id, owner_id, payload)
+  values ('users', new.id::text, new.id, profile)
+  on conflict (collection, record_id) do nothing;
+  return new;
+end;
+$$;
 
--- 11. Impact Stats Table
-CREATE TABLE IF NOT EXISTS impact_stats (
-  id VARCHAR(64) PRIMARY KEY,
-  user_id VARCHAR(64) REFERENCES users(id) ON DELETE CASCADE,
-  items_reused INT DEFAULT 0,
-  kg_co2_diverted NUMERIC(8,2) DEFAULT 0.0,
-  money_saved_inr NUMERIC(10,2) DEFAULT 0.0,
-  updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-);
+drop trigger if exists on_communitycloset_user_created on auth.users;
+create trigger on_communitycloset_user_created
+after insert on auth.users
+for each row execute procedure public.create_communitycloset_profile();
+
+insert into public.app_records (collection, record_id, owner_id, payload)
+values
+  ('categories', 'cat-1', null, '{"id":"cat-1","name":"Clothing & Accessories","type":"material","icon":"Shirt","description":"Clothes, shoes, bags, and accessories"}'),
+  ('categories', 'cat-2', null, '{"id":"cat-2","name":"Books & Study","type":"material","icon":"BookOpen","description":"Books, textbooks, notebooks, and study materials"}'),
+  ('categories', 'cat-3', null, '{"id":"cat-3","name":"Furniture","type":"material","icon":"Armchair","description":"Chairs, tables, shelves, and other furniture"}'),
+  ('categories', 'cat-4', null, '{"id":"cat-4","name":"Kitchen Items","type":"tool","icon":"Utensils","description":"Cookware, utensils, appliances, and kitchen items"}'),
+  ('categories', 'cat-5', null, '{"id":"cat-5","name":"Electronics","type":"tool","icon":"Laptop","description":"Laptops, chargers, speakers, and electronic devices"}'),
+  ('categories', 'cat-6', null, '{"id":"cat-6","name":"Sports & Fitness","type":"tool","icon":"Dumbbell","description":"Sports equipment, fitness gear, and accessories"}'),
+  ('categories', 'cat-7', null, '{"id":"cat-7","name":"Toys & Games","type":"material","icon":"Gamepad2","description":"Toys, board games, puzzles, and recreational items"}'),
+  ('categories', 'cat-8', null, '{"id":"cat-8","name":"Home & Utility","type":"tool","icon":"House","description":"Household items, cleaning tools, and useful utilities"}')
+on conflict (collection, record_id) do nothing;

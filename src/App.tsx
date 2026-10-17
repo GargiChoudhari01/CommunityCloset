@@ -2,6 +2,9 @@ import React, { useState, useEffect } from 'react';
 import type { User, ResourceItem, BorrowRequest, NotificationItem, ChatMessage, Category, Complaint, Report, AdminStats } from './types';
 import { storage } from './services/storage';
 import { realtimeService } from './services/realtimeService';
+import { mapAuthUser, signOut } from './services/auth';
+import { isSupabaseConfigured, requireSupabase } from './services/supabase';
+import { reportError } from './services/reportError';
 import { Navbar } from './components/Navbar';
 import { Footer } from './components/Footer';
 import { AuthModal } from './components/AuthModal';
@@ -9,6 +12,7 @@ import { ErrorBoundary } from './components/ErrorBoundary';
 
 // Auth Page
 import { LoginPage } from './pages/LoginPage';
+import { PasswordResetPage } from './pages/PasswordResetPage';
 
 // User Pages
 import { LandingPage } from './pages/LandingPage';
@@ -41,7 +45,12 @@ import { AdminAnalyticsPage } from './pages/admin/AdminAnalyticsPage';
 
 export function App() {
   const [currentPath, setCurrentPath] = useState<string>(window.location.hash || '#login');
-  const [user, setUser] = useState<User | null>(storage.getCurrentUser());
+  const [isPasswordRecovery, setIsPasswordRecovery] = useState(
+    () => window.location.hash.includes('type=recovery') || window.location.hash.includes('reset-password')
+  );
+  const [user, setUser] = useState<User | null>(null);
+  const [isInitializing, setIsInitializing] = useState(true);
+  const [appError, setAppError] = useState('');
   const [authModalOpen, setAuthModalOpen] = useState(false);
   const [isAdminAuthenticated, setIsAdminAuthenticated] = useState(false);
 
@@ -56,11 +65,57 @@ export function App() {
   const [complaints, setComplaints] = useState<Complaint[]>(storage.getComplaints());
   const [reports, setReports] = useState<Report[]>(storage.getReports());
 
+  useEffect(() => {
+    const showError = (event: Event) => setAppError((event as CustomEvent<string>).detail);
+    window.addEventListener('app-error', showError);
+
+    if (!isSupabaseConfigured) {
+      setAppError('Supabase is not configured. Set VITE_SUPABASE_URL and VITE_SUPABASE_PUBLISHABLE_KEY in your environment.');
+      setIsInitializing(false);
+      return () => window.removeEventListener('app-error', showError);
+    }
+
+    let active = true;
+    const initialize = async () => {
+      const { data, error } = await requireSupabase().auth.getSession();
+      if (error) throw error;
+      if (data.session) {
+        const authUser = mapAuthUser(data.session.user);
+        await storage.load(authUser);
+        if (active) {
+          const profile = {
+            ...(storage.getUsers().find((entry) => entry.id === authUser.id) || authUser),
+            email: authUser.email,
+            role: authUser.role,
+            verified: authUser.verified,
+          };
+          storage.setCurrentUser(profile);
+          setUser(profile);
+          refreshData();
+        }
+      }
+      if (active) setIsInitializing(false);
+    };
+
+    void initialize().catch((error: unknown) => {
+      if (active) {
+        setAppError(error instanceof Error ? error.message : 'Unable to initialize Supabase.');
+        setIsInitializing(false);
+      }
+    });
+
+    return () => {
+      active = false;
+      window.removeEventListener('app-error', showError);
+    };
+  }, []);
+
   // Listen for hash changes
   useEffect(() => {
     const handleHashChange = () => {
       const hash = window.location.hash || (user ? '#home' : '#login');
       setCurrentPath(hash);
+      if (hash.includes('type=recovery') || hash.includes('reset-password')) setIsPasswordRecovery(true);
       window.scrollTo(0, 0);
     };
     window.addEventListener('hashchange', handleHashChange);
@@ -84,16 +139,43 @@ export function App() {
     setReports(storage.getReports());
   };
 
-  const handleToggleWishlist = (id: string, e: React.MouseEvent) => {
-    e.stopPropagation();
-    storage.toggleWishlist(id);
-    setWishlistIds(storage.getWishlistIds());
+  const handleLoginSuccess = async (authenticatedUser: User) => {
+    try {
+      await storage.load(authenticatedUser);
+      const profile = {
+        ...(storage.getUsers().find((entry) => entry.id === authenticatedUser.id) || authenticatedUser),
+        email: authenticatedUser.email,
+        role: authenticatedUser.role,
+        verified: authenticatedUser.verified,
+      };
+      storage.setCurrentUser(profile);
+      setUser(profile);
+      refreshData();
+      if (currentPath !== '#admin/login') navigateTo('#home');
+      setAppError('');
+    } catch (error) {
+      reportError(error);
+    }
   };
 
-  const handleSendMessage = (newMsg: ChatMessage) => {
-    storage.addMessage(newMsg);
-    setMessages(storage.getMessages());
-    realtimeService.publish(`tx-${newMsg.transactionId}`, newMsg);
+  const handleToggleWishlist = async (id: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    try {
+      await storage.toggleWishlist(id);
+      setWishlistIds(storage.getWishlistIds());
+    } catch (error) {
+      reportError(error);
+    }
+  };
+
+  const handleSendMessage = async (newMsg: ChatMessage) => {
+    try {
+      await storage.addMessage(newMsg);
+      setMessages(storage.getMessages());
+      realtimeService.publish(`tx-${newMsg.transactionId}`, newMsg);
+    } catch (error) {
+      reportError(error);
+    }
   };
 
   // Helper route matchers
@@ -123,15 +205,62 @@ export function App() {
 
   // ENTRY POINT: LOGIN-FIRST FLOW GATING
   // If user is not authenticated and trying to access main app, show Login page
-  if (!user && !isAdminRoute) {
+  if (isInitializing) {
+    return <div className="min-h-screen flex items-center justify-center text-sm text-gray-600">Connecting to Supabase…</div>;
+  }
+
+  if (appError && !user) {
+    return (
+      <div className="min-h-screen flex items-center justify-center p-6">
+        <div role="alert" className="max-w-lg rounded-2xl border border-red-200 bg-red-50 p-5 text-sm text-red-800">
+          <h1 className="font-bold">Unable to connect to CommunityCloset</h1>
+          <p className="mt-2">{appError}</p>
+          <p className="mt-2">Check the Supabase project URL, publishable key, and database setup.</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (user && user.status !== 'active') {
+    return (
+      <div className="min-h-screen flex items-center justify-center p-6">
+        <div className="max-w-lg rounded-2xl border border-red-200 bg-red-50 p-5 text-sm text-red-800">
+          <h1 className="font-bold">This account is inactive</h1>
+          <p className="mt-2">Contact a CommunityCloset administrator if you believe this is a mistake.</p>
+          <button
+            className="mt-4 rounded-lg bg-red-700 px-4 py-2 font-bold text-white"
+            onClick={() => {
+              void signOut().then(() => {
+                storage.clearCurrentUser();
+                setUser(null);
+                setIsAdminAuthenticated(false);
+                navigateTo('#login');
+              }).catch(reportError);
+            }}
+          >
+            Sign out
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  if (isPasswordRecovery) {
+    return (
+      <PasswordResetPage
+        onComplete={() => {
+          setIsPasswordRecovery(false);
+          navigateTo('#home');
+        }}
+      />
+    );
+  }
+
+  if (!user) {
     return (
       <ErrorBoundary>
         <LoginPage
-          onLoginSuccess={(loggedUser) => {
-            setUser(loggedUser);
-            refreshData();
-            navigateTo('#home');
-          }}
+          onLoginSuccess={handleLoginSuccess}
           onNavigateAdmin={() => navigateTo('#admin/login')}
         />
       </ErrorBoundary>
@@ -152,11 +281,21 @@ export function App() {
           wishlistCount={wishlistIds.length}
           onOpenAuth={() => setAuthModalOpen(true)}
           onLogout={() => {
-            setUser(null);
-            storage.clearCurrentUser();
-            navigateTo('#login');
+            void signOut().then(() => {
+              setUser(null);
+              setIsAdminAuthenticated(false);
+              storage.clearCurrentUser();
+              navigateTo('#login');
+            }).catch(reportError);
           }}
         />
+
+        {appError && (
+          <div role="alert" className="mx-auto mt-3 w-full max-w-7xl rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
+            {appError}
+            <button className="ml-3 font-bold underline" onClick={() => setAppError('')}>Dismiss</button>
+          </div>
+        )}
 
         {/* Main View Router */}
         <main className="flex-1">
@@ -277,9 +416,11 @@ export function App() {
               wishlistIds={wishlistIds}
               onNavigate={navigateTo}
               onUpdateUser={(updated) => {
-                setUser(updated);
-                storage.setCurrentUser(updated);
-                refreshData();
+                void storage.updateUser(updated).then(() => {
+                  setUser(updated);
+                  storage.setCurrentUser(updated);
+                  refreshData();
+                }).catch(reportError);
               }}
               onToggleWishlist={handleToggleWishlist}
             />
@@ -304,6 +445,7 @@ export function App() {
           {/* ADMIN PORTAL ROUTES */}
           {isAdminRoute && !isAdminAuthenticated && (
             <AdminLoginPage
+              currentUser={user}
               onLoginSuccess={() => {
                 setIsAdminAuthenticated(true);
                 navigateTo('#admin/dashboard');
@@ -383,10 +525,7 @@ export function App() {
         <AuthModal
           isOpen={authModalOpen}
           onClose={() => setAuthModalOpen(false)}
-          onSuccess={(loggedUser) => {
-            setUser(loggedUser);
-            refreshData();
-          }}
+          onSuccess={handleLoginSuccess}
         />
 
       </div>

@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { ArrowLeft, Save } from 'lucide-react';
 import type { ResourceItem, Category } from '../types';
 import { storage } from '../services/storage';
+import { reportError } from '../services/reportError';
 
 interface EditListingPageProps {
   itemId: string;
@@ -47,17 +48,21 @@ export const EditListingPage: React.FC<EditListingPageProps> = ({
     );
   }
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    storage.updateItem(item.id, {
-      title,
-      description,
-      category,
-      condition,
-      depositAmount: Number(depositAmount)
-    });
-    onUpdated();
-    onNavigate(`#item/${item.id}`);
+    try {
+      await storage.updateItem(item.id, {
+        title,
+        description,
+        category,
+        condition,
+        depositAmount: Number(depositAmount)
+      });
+      onUpdated();
+      onNavigate(`#item/${item.id}`);
+    } catch (error) {
+      reportError(error);
+    }
   };
 
   return (

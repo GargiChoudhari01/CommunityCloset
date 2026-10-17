@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { X, Star, CheckCircle } from 'lucide-react';
 import type { Review, User, BorrowRequest } from '../types';
 import { storage } from '../services/storage';
+import { reportError } from '../services/reportError';
 
 interface ReviewModalProps {
   request: BorrowRequest | null;
@@ -26,7 +27,7 @@ export const ReviewModal: React.FC<ReviewModalProps> = ({
   const revieweeId = isLender ? request.requesterId : request.ownerId;
   const revieweeName = isLender ? request.requesterName : request.ownerName;
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     const newReview: Review = {
       id: `rev-${Date.now()}`,
@@ -42,9 +43,13 @@ export const ReviewModal: React.FC<ReviewModalProps> = ({
       createdAt: new Date().toISOString()
     };
 
-    storage.addReview(newReview);
-    onSubmitted(newReview);
-    onClose();
+    try {
+      await storage.addReview(newReview);
+      onSubmitted(newReview);
+      onClose();
+    } catch (error) {
+      reportError(error);
+    }
   };
 
   return (

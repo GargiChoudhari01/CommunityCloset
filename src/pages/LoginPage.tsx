@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Mail, Lock, User as UserIcon, Shield, Globe, MapPin, Heart, CheckCircle2, ArrowRight } from 'lucide-react';
 import type { User } from '../types';
-import { storage } from '../services/storage';
+import { sendPasswordReset, signIn, signInWithGoogle, signUp } from '../services/auth';
 
 interface LoginPageProps {
   onLoginSuccess: (user: User) => void;
@@ -41,7 +41,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess, onNavigate
     }
   };
 
-  const handleLoginSubmit = (e: React.FormEvent) => {
+  const handleLoginSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMessage('');
     
@@ -50,33 +50,15 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess, onNavigate
       return;
     }
 
-    const existingUsers = storage.getUsers();
-    let existing = existingUsers.find(u => u.email.toLowerCase() === email.toLowerCase());
-
-    if (!existing) {
-      // Create user on login if first time
-      existing = {
-        id: `u-${Date.now()}`,
-        name: email.split('@')[0] || 'Katraj Resident',
-        email: email.toLowerCase(),
-        role: 'user',
-        locationAddress: neighborhood || 'Katraj, Pune, Maharashtra',
-        lat: 18.4575,
-        lng: 73.8508,
-        ecoPoints: 100,
-        co2SavedKg: 0,
-        verified: true,
-        status: 'active',
-        createdAt: new Date().toISOString()
-      };
-      storage.saveUsers([existing, ...existingUsers]);
+    try {
+      const signedInUser = await signIn(email.trim(), password);
+      await onLoginSuccess(signedInUser);
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : 'Unable to sign in.');
     }
-
-    storage.setCurrentUser(existing);
-    onLoginSuccess(existing);
   };
 
-  const handleSignupSubmit = (e: React.FormEvent) => {
+  const handleSignupSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMessage('');
 
@@ -85,58 +67,46 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess, onNavigate
       return;
     }
 
-    const existingUsers = storage.getUsers();
-    const newUser: User = {
-      id: `u-${Date.now()}`,
-      name: name.trim(),
-      email: email.toLowerCase().trim(),
-      role: 'user',
-      avatar: avatarUrl || undefined,
-      locationAddress: neighborhood.trim() || 'Katraj, Pune, Maharashtra',
-      bio: `Neighbor in ${neighborhood}. Interested in ${selectedInterests.join(', ')}.`,
-      lat: 18.4575,
-      lng: 73.8508,
-      ecoPoints: 150,
-      co2SavedKg: 0,
-      verified: true,
-      status: 'active',
-      createdAt: new Date().toISOString()
-    };
-
-    storage.saveUsers([newUser, ...existingUsers]);
-    storage.setCurrentUser(newUser);
-    onLoginSuccess(newUser);
+    try {
+      const result = await signUp(email.trim(), password, {
+        name: name.trim(),
+        avatar: avatarUrl || undefined,
+        locationAddress: neighborhood.trim() || 'Katraj, Pune, Maharashtra',
+        bio: `Neighbor in ${neighborhood}. Interested in ${selectedInterests.join(', ')}.`,
+      });
+      if (result.needsEmailConfirmation) {
+        setErrorMessage('Account created. Check your email to confirm your address, then sign in.');
+        setActiveTab('login');
+        return;
+      }
+      if (result.user) await onLoginSuccess(result.user);
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : 'Unable to create your account.');
+    }
   };
 
-  const handleForgotSubmit = (e: React.FormEvent) => {
+  const handleForgotSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!email) {
       setErrorMessage('Please enter your email address to receive password reset link.');
       return;
     }
-    setResetSent(true);
     setErrorMessage('');
+    try {
+      await sendPasswordReset(email.trim());
+      setResetSent(true);
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : 'Unable to send the password reset email.');
+    }
   };
 
-  const handleGoogleOAuth = () => {
-    const googleUser: User = {
-      id: `u-google-${Date.now()}`,
-      name: 'Katraj Community Member',
-      email: 'member.katraj@gmail.com',
-      role: 'user',
-      locationAddress: 'Katraj Lake Area, Pune',
-      lat: 18.4582,
-      lng: 73.8512,
-      ecoPoints: 200,
-      co2SavedKg: 0,
-      verified: true,
-      status: 'active',
-      createdAt: new Date().toISOString()
-    };
-    const existingUsers = storage.getUsers();
-    storage.saveUsers([googleUser, ...existingUsers.filter(u => u.email !== googleUser.email)]);
-    storage.setCurrentUser(googleUser);
-    onLoginSuccess(googleUser);
+  const handleGoogleOAuth = async () => {
+    setErrorMessage('');
+    try {
+      await signInWithGoogle();
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : 'Unable to sign in with Google.');
+    }
   };
 
   return (

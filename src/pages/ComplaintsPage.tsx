@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { PlusCircle } from 'lucide-react';
 import type { Complaint, User } from '../types';
 import { storage } from '../services/storage';
+import { reportError } from '../services/reportError';
 
 interface ComplaintsPageProps {
   currentUser: User;
@@ -18,7 +19,7 @@ export const ComplaintsPage: React.FC<ComplaintsPageProps> = ({
   const [description, setDescription] = useState('');
   const [showForm, setShowForm] = useState(false);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     const newCmp: Complaint = {
       id: `cmp-${Date.now()}`,
@@ -30,11 +31,15 @@ export const ComplaintsPage: React.FC<ComplaintsPageProps> = ({
       createdAt: new Date().toISOString()
     };
 
-    storage.addComplaint(newCmp);
-    setSubject('');
-    setDescription('');
-    setShowForm(false);
-    onSubmitted();
+    try {
+      await storage.addComplaint(newCmp);
+      setSubject('');
+      setDescription('');
+      setShowForm(false);
+      onSubmitted();
+    } catch (error) {
+      reportError(error);
+    }
   };
 
   return (

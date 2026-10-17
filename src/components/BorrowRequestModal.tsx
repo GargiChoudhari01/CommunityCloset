@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { X, CheckCircle2 } from 'lucide-react';
 import type { ResourceItem, User, BorrowRequest } from '../types';
 import { storage } from '../services/storage';
+import { reportError } from '../services/reportError';
 
 interface BorrowRequestModalProps {
   item: ResourceItem | null;
@@ -24,7 +25,7 @@ export const BorrowRequestModal: React.FC<BorrowRequestModalProps> = ({
 
   if (!item) return null;
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     const newTx: BorrowRequest = {
       id: `req-${Date.now()}`,
@@ -48,20 +49,23 @@ export const BorrowRequestModal: React.FC<BorrowRequestModalProps> = ({
       createdAt: new Date().toISOString()
     };
 
-    storage.addTransaction(newTx);
-    storage.addNotification({
-      id: `notif-${Date.now()}`,
-      userId: item.userId,
-      type: 'request',
-      title: 'New Borrow Request',
-      message: `${currentUser.name} requested to borrow "${item.title}"`,
-      link: '#transactions',
-      readStatus: false,
-      timestamp: new Date().toISOString()
-    });
-
-    onSubmitted(newTx);
-    onClose();
+    try {
+      await storage.addTransaction(newTx);
+      await storage.addNotification({
+        id: `notif-${Date.now()}`,
+        userId: item.userId,
+        type: 'request',
+        title: 'New Borrow Request',
+        message: `${currentUser.name} requested to borrow "${item.title}"`,
+        link: '#transactions',
+        readStatus: false,
+        timestamp: new Date().toISOString()
+      });
+      onSubmitted(newTx);
+      onClose();
+    } catch (error) {
+      reportError(error);
+    }
   };
 
   return (

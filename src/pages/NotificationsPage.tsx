@@ -2,6 +2,7 @@ import React from 'react';
 import { Bell, Calendar } from 'lucide-react';
 import type { NotificationItem } from '../types';
 import { storage } from '../services/storage';
+import { reportError } from '../services/reportError';
 
 interface NotificationsPageProps {
   notifications: NotificationItem[];
@@ -14,9 +15,13 @@ export const NotificationsPage: React.FC<NotificationsPageProps> = ({
   onNavigate,
   onRefresh
 }) => {
-  const handleMarkRead = (id: string) => {
-    storage.markNotificationRead(id);
-    onRefresh();
+  const handleMarkRead = async (id: string) => {
+    try {
+      await storage.markNotificationRead(id);
+      onRefresh();
+    } catch (error) {
+      reportError(error);
+    }
   };
 
   return (
@@ -38,7 +43,7 @@ export const NotificationsPage: React.FC<NotificationsPageProps> = ({
             <div
               key={n.id}
               onClick={() => {
-                handleMarkRead(n.id);
+                void handleMarkRead(n.id);
                 if (n.link) onNavigate(n.link);
               }}
               className={`p-4 rounded-2xl border transition-all cursor-pointer flex items-start space-x-3 ${

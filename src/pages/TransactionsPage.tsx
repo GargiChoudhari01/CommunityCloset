@@ -3,6 +3,7 @@ import { CheckCircle2, MessageSquare, Star } from 'lucide-react';
 import type { BorrowRequest, User } from '../types';
 import { storage } from '../services/storage';
 import { ReviewModal } from '../components/ReviewModal';
+import { reportError } from '../services/reportError';
 
 interface TransactionsPageProps {
   currentUser: User;
@@ -19,9 +20,13 @@ export const TransactionsPage: React.FC<TransactionsPageProps> = ({
 }) => {
   const [selectedReviewTx, setSelectedReviewTx] = useState<BorrowRequest | null>(null);
 
-  const handleUpdateStatus = (id: string, status: BorrowRequest['status']) => {
-    storage.updateTransaction(id, status);
-    onRefresh();
+  const handleUpdateStatus = async (id: string, status: BorrowRequest['status']) => {
+    try {
+      await storage.updateTransaction(id, status);
+      onRefresh();
+    } catch (error) {
+      reportError(error);
+    }
   };
 
   return (
@@ -77,13 +82,13 @@ export const TransactionsPage: React.FC<TransactionsPageProps> = ({
                   {tx.status === 'pending' && isLender && (
                     <>
                       <button
-                        onClick={() => handleUpdateStatus(tx.id, 'accepted')}
+                        onClick={() => { void handleUpdateStatus(tx.id, 'accepted'); }}
                         className="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-xl text-xs font-bold shadow transition-all"
                       >
                         Approve Request
                       </button>
                       <button
-                        onClick={() => handleUpdateStatus(tx.id, 'declined')}
+                        onClick={() => { void handleUpdateStatus(tx.id, 'declined'); }}
                         className="bg-red-100 text-red-700 hover:bg-red-200 px-3 py-2 rounded-xl text-xs font-bold transition-all"
                       >
                         Decline
@@ -93,7 +98,7 @@ export const TransactionsPage: React.FC<TransactionsPageProps> = ({
 
                   {(tx.status === 'accepted' || tx.status === 'pending' || tx.status === 'active') && (
                     <button
-                      onClick={() => handleUpdateStatus(tx.id, 'completed')}
+                      onClick={() => { void handleUpdateStatus(tx.id, 'completed'); }}
                       className="bg-[#900C3F] hover:bg-[#700931] text-white px-4 py-2 rounded-xl text-xs font-bold shadow transition-all flex items-center space-x-1"
                     >
                       <CheckCircle2 className="w-3.5 h-3.5" />

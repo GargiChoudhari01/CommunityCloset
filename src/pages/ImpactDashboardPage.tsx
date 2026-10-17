@@ -8,8 +8,6 @@ interface ImpactDashboardPageProps {
 
 export const ImpactDashboardPage: React.FC<ImpactDashboardPageProps> = () => {
   const impact = storage.getImpactStats();
-  const completedTx = storage.getTransactions().filter(t => t.status === 'completed');
-  const totalUsers = storage.getUsers().length;
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-10 animate-fade-in">
@@ -37,7 +35,7 @@ export const ImpactDashboardPage: React.FC<ImpactDashboardPageProps> = () => {
           <span className="text-3xl font-black text-gray-900">{impact.kgCo2Diverted} kg</span>
           <p className="text-[11px] text-emerald-700 font-semibold">
             {impact.kgCo2Diverted > 0 
-              ? `Prevented via ${completedTx.length} completed lends` 
+              ? `Prevented via ${impact.itemsReused} completed lends`
               : 'Start sharing resources to prevent emissions'}
           </p>
         </div>
@@ -66,7 +64,7 @@ export const ImpactDashboardPage: React.FC<ImpactDashboardPageProps> = () => {
           </div>
           <span className="text-xs font-bold text-gray-400 uppercase block">Active Lenders</span>
           <span className="text-3xl font-black text-gray-900">{impact.activeLendersCount} Lenders</span>
-          <p className="text-[11px] text-purple-700 font-semibold">{totalUsers} Total registered users</p>
+          <p className="text-[11px] text-purple-700 font-semibold">{impact.totalUsers} Total registered users</p>
         </div>
 
       </div>
