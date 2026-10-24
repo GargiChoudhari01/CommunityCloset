@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import type { User, ResourceItem, Review, UserBadge } from '../types';
-import { Edit3, MapPin, PlusCircle, Star } from 'lucide-react';
+import { Edit3, MapPin, PlusCircle, Star, LogOut } from 'lucide-react';
 import { EditProfileModal } from '../components/EditProfileModal';
 import { ItemCard } from '../components/ItemCard';
 import { BadgeDisplay } from '../components/BadgeDisplay';
@@ -13,6 +13,7 @@ interface ProfilePageProps {
   onNavigate: (path: string) => void;
   onUpdateUser: (updated: User) => void;
   onToggleWishlist: (id: string, e: React.MouseEvent) => void;
+  onLogout?: () => void;
 }
 
 export const ProfilePage: React.FC<ProfilePageProps> = ({
@@ -21,7 +22,8 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({
   wishlistIds,
   onNavigate,
   onUpdateUser,
-  onToggleWishlist
+  onToggleWishlist,
+  onLogout,
 }) => {
   const [editModalOpen, setEditModalOpen] = useState(false);
   const badges: UserBadge[] = storage.getBadges(user.id);
@@ -62,13 +64,26 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({
           </div>
         </div>
 
-        <button
-          onClick={() => setEditModalOpen(true)}
-          className="bg-white border border-[#FFC0CB] text-[#900C3F] hover:bg-[#FFF0F5] px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center space-x-1.5 shadow-sm"
-        >
-          <Edit3 className="w-4 h-4" />
-          <span>Edit Profile</span>
-        </button>
+        <div className="flex items-center space-x-2.5">
+          <button
+            onClick={() => setEditModalOpen(true)}
+            className="bg-white border border-[#FFC0CB] text-[#900C3F] hover:bg-[#FFF0F5] px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center space-x-1.5 shadow-sm"
+          >
+            <Edit3 className="w-4 h-4" />
+            <span>Edit Profile</span>
+          </button>
+
+          {onLogout && (
+            <button
+              onClick={onLogout}
+              className="bg-red-50 border border-red-200 text-red-700 hover:bg-red-100 px-3.5 py-2 rounded-xl text-xs font-extrabold transition-all flex items-center space-x-1.5 shadow-sm hover:scale-105 active:scale-95"
+              title="Logout"
+            >
+              <LogOut className="w-4 h-4 text-red-600" />
+              <span>Logout</span>
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Badges Section */}

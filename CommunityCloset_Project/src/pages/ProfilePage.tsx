@@ -1,8 +1,10 @@
 import React, { useState } from 'react';
-import type { User, ResourceItem } from '../types';
-import { Edit3, MapPin, PlusCircle } from 'lucide-react';
+import type { User, ResourceItem, Review, UserBadge } from '../types';
+import { Edit3, MapPin, PlusCircle, Star, LogOut } from 'lucide-react';
 import { EditProfileModal } from '../components/EditProfileModal';
 import { ItemCard } from '../components/ItemCard';
+import { BadgeDisplay } from '../components/BadgeDisplay';
+import { storage } from '../services/storage';
 
 interface ProfilePageProps {
   user: User;
@@ -11,6 +13,7 @@ interface ProfilePageProps {
   onNavigate: (path: string) => void;
   onUpdateUser: (updated: User) => void;
   onToggleWishlist: (id: string, e: React.MouseEvent) => void;
+  onLogout?: () => void;
 }
 
 export const ProfilePage: React.FC<ProfilePageProps> = ({
@@ -19,9 +22,12 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({
   wishlistIds,
   onNavigate,
   onUpdateUser,
-  onToggleWishlist
+  onToggleWishlist,
+  onLogout,
 }) => {
   const [editModalOpen, setEditModalOpen] = useState(false);
+  const badges: UserBadge[] = storage.getBadges(user.id);
+  const reviews: Review[] = storage.getReviews().filter(r => r.revieweeId === user.id);
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8 animate-fade-in">
@@ -41,21 +47,49 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({
                 Katraj Resident
               </span>
             </div>
-            <p className="text-xs text-gray-500 mt-0.5 flex items-center space-x-1">
-              <MapPin className="w-3.5 h-3.5 text-[#E86F88]" />
-              <span>{user.locationAddress}</span>
-            </p>
+            
+            <div className="flex items-center space-x-3 mt-1">
+              <span className="text-xs text-amber-600 font-extrabold flex items-center space-x-1">
+                <Star className="w-4 h-4 fill-amber-400 text-amber-400" />
+                <span>{user.ratingAvg || 4.9} ({user.reviewsCount || reviews.length} reviews)</span>
+              </span>
+              <span className="text-xs text-gray-400">•</span>
+              <span className="text-xs text-gray-500 flex items-center space-x-1">
+                <MapPin className="w-3.5 h-3.5 text-[#E86F88]" />
+                <span>{user.locationAddress}</span>
+              </span>
+            </div>
+
             <p className="text-xs text-gray-600 mt-2 max-w-md">{user.bio || 'Sharing tools & building community in Katraj!'}</p>
           </div>
         </div>
 
-        <button
-          onClick={() => setEditModalOpen(true)}
-          className="bg-white border border-[#FFC0CB] text-[#900C3F] hover:bg-[#FFF0F5] px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center space-x-1.5 shadow-sm"
-        >
-          <Edit3 className="w-4 h-4" />
-          <span>Edit Profile</span>
-        </button>
+        <div className="flex items-center space-x-2.5">
+          <button
+            onClick={() => setEditModalOpen(true)}
+            className="bg-white border border-[#FFC0CB] text-[#900C3F] hover:bg-[#FFF0F5] px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center space-x-1.5 shadow-sm"
+          >
+            <Edit3 className="w-4 h-4" />
+            <span>Edit Profile</span>
+          </button>
+
+          {onLogout && (
+            <button
+              onClick={onLogout}
+              className="bg-red-50 border border-red-200 text-red-700 hover:bg-red-100 px-3.5 py-2 rounded-xl text-xs font-extrabold transition-all flex items-center space-x-1.5 shadow-sm hover:scale-105 active:scale-95"
+              title="Logout"
+            >
+              <LogOut className="w-4 h-4 text-red-600" />
+              <span>Logout</span>
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* Badges Section */}
+      <div className="bg-white p-6 rounded-3xl border border-[#FFC0CB]/60 shadow-sm space-y-3">
+        <h3 className="font-extrabold text-sm text-gray-900">Community Badges Earned</h3>
+        <BadgeDisplay badges={badges} />
       </div>
 
       {/* Stats row */}
@@ -73,6 +107,24 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({
           <span className="text-3xl font-black text-purple-900">{userListings.length}</span>
         </div>
       </div>
+
+      {/* Reviews list */}
+      {reviews.length > 0 && (
+        <div className="bg-white p-6 rounded-3xl border border-[#FFC0CB]/60 shadow-sm space-y-4">
+          <h3 className="font-extrabold text-sm text-gray-900">Recent Ratings & Reviews</h3>
+          <div className="space-y-3">
+            {reviews.map((r) => (
+              <div key={r.id} className="p-3.5 rounded-2xl bg-[#FFF0F5]/40 border border-[#FFC0CB]/40 space-y-1">
+                <div className="flex items-center justify-between text-xs">
+                  <span className="font-bold text-gray-900">{r.reviewerName}</span>
+                  <span className="text-amber-500 font-bold">{'★'.repeat(r.rating)} ({r.rating}/5)</span>
+                </div>
+                <p className="text-xs text-gray-600 leading-relaxed">{r.comment}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* User's Active Listings */}
       <div>

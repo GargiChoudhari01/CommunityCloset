@@ -1,7 +1,24 @@
-import React, { useState } from 'react';
-import { Mail, Lock, User as UserIcon, Shield, Globe, MapPin, Heart, CheckCircle2, ArrowRight } from 'lucide-react';
+import React, { useEffect, useRef, useState } from 'react';
+import {
+  Mail,
+  Lock,
+  User as UserIcon,
+  Shield,
+  MapPin,
+  Heart,
+  CheckCircle2,
+  ArrowRight,
+  ArrowLeft,
+  KeyRound,
+  RefreshCw,
+} from 'lucide-react';
 import type { User } from '../types';
-import { sendPasswordReset, signIn, signInWithGoogle, signUp } from '../services/auth';
+import {
+  signIn,
+  sendSignUpOtp,
+  verifySignUpOtp,
+  sendPasswordReset,
+} from '../services/auth';
 
 interface LoginPageProps {
   onLoginSuccess: (user: User) => void;
@@ -10,18 +27,38 @@ interface LoginPageProps {
 
 export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess, onNavigateAdmin }) => {
   const [activeTab, setActiveTab] = useState<'login' | 'signup' | 'forgot'>('login');
-  
-  // Form States
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
+
+  // Sign-in States (Direct sign in, no OTP)
+  const [loginIdentifier, setLoginIdentifier] = useState('');
+  const [loginPassword, setLoginPassword] = useState('');
+
+  // Sign-up States
+  const [signupStep, setSignupStep] = useState<'details' | 'otp'>('details');
   const [name, setName] = useState('');
+  const [signupEmail, setSignupEmail] = useState('');
+  const [signupPassword, setSignupPassword] = useState('');
   const [neighborhood, setNeighborhood] = useState('Katraj, Pune, Maharashtra');
   const [selectedInterests, setSelectedInterests] = useState<string[]>(['Gardening', 'DIY']);
   const [avatarUrl, setAvatarUrl] = useState('');
+  const [otpDigits, setOtpDigits] = useState<string[]>(['', '', '', '', '', '']);
+  const [otpPreview, setOtpPreview] = useState<string | null>(null);
+  const [resendCooldown, setResendCooldown] = useState(0);
+  const otpInputRefs = useRef<(HTMLInputElement | null)[]>([]);
+
+  // Common UI States
+  const [forgotEmail, setForgotEmail] = useState('');
   const [resetSent, setResetSent] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
- const interestOptions = ['Books', 'Clothes', 'Furniture', 'Kitchen Items','Sports Equipment', 'Electronics', 'Study Materials'];
+  const interestOptions = ['Books', 'Clothes', 'Furniture', 'Kitchen Items', 'Sports Equipment', 'Electronics', 'Study Materials'];
+
+  useEffect(() => {
+    if (resendCooldown <= 0) return;
+    const timer = setTimeout(() => setResendCooldown((current) => current - 1), 1000);
+    return () => clearTimeout(timer);
+  }, [resendCooldown]);
+
   const toggleInterest = (tag: string) => {
     if (selectedInterests.includes(tag)) {
       setSelectedInterests(selectedInterests.filter(t => t !== tag));
@@ -41,20 +78,24 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess, onNavigate
     }
   };
 
+  // --- SIGN IN HANDLER (DIRECT - NO OTP) ---
   const handleLoginSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMessage('');
-    
-    if (!email || !password) {
-      setErrorMessage('Please enter both email and password.');
+
+    if (!loginIdentifier.trim() || !loginPassword) {
+      setErrorMessage('Please enter both email/phone and password.');
       return;
     }
 
+    setIsSubmitting(true);
     try {
-      const signedInUser = await signIn(email.trim(), password);
+      const signedInUser = await signIn(loginIdentifier.trim(), loginPassword);
       await onLoginSuccess(signedInUser);
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : 'Unable to sign in.');
+      setErrorMessage(error instanceof Error ? error.message : 'Unable to sign in. Please verify your credentials.');
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -62,50 +103,106 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess, onNavigate
     e.preventDefault();
     setErrorMessage('');
 
-    if (!name || !email || !password) {
+    if (!name.trim() || !signupEmail.trim() || !signupPassword) {
       setErrorMessage('Please fill in your name, email, and password.');
       return;
     }
 
+    setIsSubmitting(true);
     try {
-      const result = await signUp(email.trim(), password, {
-        name: name.trim(),
-        avatar: avatarUrl || undefined,
-        locationAddress: neighborhood.trim() || 'Katraj, Pune, Maharashtra',
-        bio: `Neighbor in ${neighborhood}. Interested in ${selectedInterests.join(', ')}.`,
-      });
-      if (result.needsEmailConfirmation) {
-        setErrorMessage('Account created. Check your email to confirm your address, then sign in.');
-        setActiveTab('login');
-        return;
-      }
-      if (result.user) await onLoginSuccess(result.user);
+      const result = await sendSignUpOtp(signupEmail.trim());
+      setOtpPreview(result.previewCode || null);
+      setOtpDigits(['', '', '', '', '', '']);
+      setSignupStep('otp');
+      setResendCooldown(30);
+      setTimeout(() => otpInputRefs.current[0]?.focus(), 150);
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : 'Unable to create your account.');
+      setErrorMessage(error instanceof Error ? error.message : 'Unable to send the email verification code.');
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
+  const handleVerifySignupOtp = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setErrorMessage('');
+    setIsSubmitting(true);
+    try {
+      const verifiedUser = await verifySignUpOtp(
+        signupEmail,
+        otpDigits.join(''),
+        signupPassword,
+        {
+          name: name.trim(),
+          avatar: avatarUrl || undefined,
+          locationAddress: neighborhood.trim() || 'PICT, Pune, Maharashtra',
+          bio: `Neighbor in ${neighborhood}. Interested in ${selectedInterests.join(', ')}.`,
+        }
+      );
+      await onLoginSuccess(verifiedUser);
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : 'Invalid or expired verification code.');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleResendSignupOtp = async () => {
+    if (resendCooldown > 0 || isSubmitting) return;
+    setErrorMessage('');
+    try {
+      const result = await sendSignUpOtp(signupEmail);
+      setOtpPreview(result.previewCode || null);
+      setResendCooldown(30);
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : 'Unable to resend the verification code.');
+    }
+  };
+
+  const handleOtpDigitChange = (index: number, value: string) => {
+    const digits = value.replace(/\D/g, '');
+    if (!digits) {
+      const updated = [...otpDigits];
+      updated[index] = '';
+      setOtpDigits(updated);
+      return;
+    }
+
+    const updated = [...otpDigits];
+    digits.slice(0, 6 - index).split('').forEach((digit, offset) => {
+      updated[index + offset] = digit;
+    });
+    setOtpDigits(updated);
+    otpInputRefs.current[Math.min(index + digits.length, 5)]?.focus();
+  };
+
+  const handleOtpPaste = (event: React.ClipboardEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    const digits = event.clipboardData.getData('text').replace(/\D/g, '').slice(0, 6);
+    if (!digits) return;
+    setOtpDigits(Array.from({ length: 6 }, (_, index) => digits[index] || ''));
+    otpInputRefs.current[Math.min(digits.length, 5)]?.focus();
+  };
+
+  const handleFillPreviewOtp = () => {
+    if (!otpPreview) return;
+    setOtpDigits(otpPreview.split(''));
+    otpInputRefs.current[5]?.focus();
+  };
+
+  // --- FORGOT PASSWORD HANDLER ---
   const handleForgotSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!email) {
-      setErrorMessage('Please enter your email address to receive password reset link.');
+    if (!forgotEmail.trim()) {
+      setErrorMessage('Please enter your registered email address to receive password reset link.');
       return;
     }
     setErrorMessage('');
     try {
-      await sendPasswordReset(email.trim());
+      await sendPasswordReset(forgotEmail.trim());
       setResetSent(true);
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : 'Unable to send the password reset email.');
-    }
-  };
-
-  const handleGoogleOAuth = async () => {
-    setErrorMessage('');
-    try {
-      await signInWithGoogle();
-    } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : 'Unable to sign in with Google.');
+      setErrorMessage(error instanceof Error ? error.message : 'Unable to send password reset email.');
     }
   };
 
@@ -124,28 +221,28 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess, onNavigate
             <div>
               <h1 className="text-3xl font-black tracking-tight text-white">CommunityCloset</h1>
               <p className="text-xs text-[#FFC0CB] mt-1 font-medium leading-relaxed">
-                Katraj, Pune hyper-local sharing platform. Lend tools, borrow garden items, exchange lumber & baby supplies safely with real neighbors.
+                PICT, Pune hyper-local sharing platform. Lend, borrow, exchange and sell safely with real neighbors.
               </p>
             </div>
 
             <div className="space-y-3 pt-2 text-xs">
               <div className="flex items-center space-x-2 text-[#FFF0F5]">
                 <CheckCircle2 className="w-4 h-4 text-[#FFB6C1]" />
-                <span>100% Free neighbor-to-neighbor sharing</span>
+                <span>Free neighbor-to-neighbor sharing platform</span>
               </div>
               <div className="flex items-center space-x-2 text-[#FFF0F5]">
                 <CheckCircle2 className="w-4 h-4 text-[#FFB6C1]" />
-                <span>Real verified Katraj user profiles</span>
+                <span>Verified accounts via email verification code</span>
               </div>
               <div className="flex items-center space-x-2 text-[#FFF0F5]">
                 <CheckCircle2 className="w-4 h-4 text-[#FFB6C1]" />
-                <span>Zero fake / AI content — genuine activity</span>
+                <span>Make everyday living more affordable and eco-friendly</span>
               </div>
             </div>
           </div>
 
           <div className="relative z-10 pt-8 border-t border-white/10 flex items-center justify-between">
-            <span className="text-[11px] text-[#FFC0CB]">Katraj • Sukhsagar • Lake Circle</span>
+            <span className="text-[11px] text-[#FFC0CB]">SAVE MONEY, SHARE VALUE</span>
             {onNavigateAdmin && (
               <button
                 onClick={onNavigateAdmin}
@@ -174,7 +271,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess, onNavigate
               Sign In
             </button>
             <button
-              onClick={() => { setActiveTab('signup'); setErrorMessage(''); setResetSent(false); }}
+              onClick={() => { setActiveTab('signup'); setSignupStep('details'); setErrorMessage(''); setResetSent(false); }}
               className={`flex-1 py-2 text-xs font-extrabold rounded-xl transition-all ${
                 activeTab === 'signup'
                   ? 'bg-[#900C3F] text-white shadow-sm'
@@ -185,43 +282,26 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess, onNavigate
             </button>
           </div>
 
-          {/* Google OAuth Button */}
-          {activeTab !== 'forgot' && (
-            <div className="mb-4">
-              <button
-                type="button"
-                onClick={handleGoogleOAuth}
-                className="w-full bg-white border-2 border-gray-200 hover:border-[#FFC0CB] text-gray-700 font-bold py-2.5 px-4 rounded-xl text-xs shadow-sm transition-all flex items-center justify-center space-x-2 hover:bg-[#FFF0F5]/50"
-              >
-                <Globe className="w-4 h-4 text-blue-500" />
-                <span>Continue with Google</span>
-              </button>
-              <div className="relative flex items-center justify-center my-4">
-                <div className="border-t border-gray-200 w-full" />
-                <span className="bg-white px-3 text-[10px] text-gray-400 font-bold uppercase tracking-wider">Or with Email</span>
-              </div>
-            </div>
-          )}
-
           {errorMessage && (
-            <div className="bg-red-50 border border-red-200 text-red-700 text-xs p-3 rounded-xl mb-4">
-              {errorMessage}
+            <div className="bg-red-50 border border-red-200 text-red-700 text-xs p-3 rounded-xl mb-4 font-semibold animate-fade-in flex items-start space-x-2">
+              <span className="shrink-0 text-red-500 font-bold">⚠️</span>
+              <span>{errorMessage}</span>
             </div>
           )}
 
-          {/* TAB 1: LOGIN FORM */}
+          {/* TAB 1: SIGN IN (DIRECT LOGIN - NO OTP) */}
           {activeTab === 'login' && (
-            <form onSubmit={handleLoginSubmit} className="space-y-4">
+            <form onSubmit={handleLoginSubmit} className="space-y-4 animate-fade-in">
               <div>
-                <label className="block text-xs font-bold text-gray-700 mb-1">Email Address</label>
+                <label className="block text-xs font-bold text-gray-700 mb-1">Email Address or Phone Number</label>
                 <div className="relative">
                   <Mail className="w-4 h-4 text-gray-400 absolute left-3 top-3" />
                   <input
-                    type="email"
+                    type="text"
                     required
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    placeholder="your.email@gmail.com"
+                    value={loginIdentifier}
+                    onChange={(e) => setLoginIdentifier(e.target.value)}
+                    placeholder="name@gmail.com or 10-digit phone"
                     className="w-full pl-9 pr-4 py-2.5 rounded-xl border border-gray-300 text-sm focus:outline-none focus:border-[#900C3F] focus:ring-2 focus:ring-[#FFC0CB]"
                   />
                 </div>
@@ -232,7 +312,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess, onNavigate
                   <label className="block text-xs font-bold text-gray-700">Password</label>
                   <button
                     type="button"
-                    onClick={() => setActiveTab('forgot')}
+                    onClick={() => { setActiveTab('forgot'); setForgotEmail(loginIdentifier); setErrorMessage(''); }}
                     className="text-[11px] font-bold text-[#900C3F] hover:underline"
                   >
                     Forgot Password?
@@ -243,8 +323,8 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess, onNavigate
                   <input
                     type="password"
                     required
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
+                    value={loginPassword}
+                    onChange={(e) => setLoginPassword(e.target.value)}
                     placeholder="••••••••"
                     className="w-full pl-9 pr-4 py-2.5 rounded-xl border border-gray-300 text-sm focus:outline-none focus:border-[#900C3F] focus:ring-2 focus:ring-[#FFC0CB]"
                   />
@@ -253,17 +333,24 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess, onNavigate
 
               <button
                 type="submit"
-                className="w-full bg-[#900C3F] hover:bg-[#700931] text-white font-black py-3 rounded-xl text-sm shadow-md hover:shadow-lg transition-all flex items-center justify-center space-x-2"
+                disabled={isSubmitting}
+                className="w-full bg-[#900C3F] hover:bg-[#700931] disabled:opacity-50 text-white font-black py-3 rounded-xl text-sm shadow-md hover:shadow-lg transition-all flex items-center justify-center space-x-2"
               >
-                <span>Enter Community Closet</span>
-                <ArrowRight className="w-4 h-4" />
+                {isSubmitting ? (
+                  <span>Signing In...</span>
+                ) : (
+                  <>
+                    <span>Enter Community Closet</span>
+                    <ArrowRight className="w-4 h-4" />
+                  </>
+                )}
               </button>
             </form>
           )}
 
-          {/* TAB 2: CREATE ACCOUNT FORM */}
-          {activeTab === 'signup' && (
-            <form onSubmit={handleSignupSubmit} className="space-y-3">
+          {/* TAB 2: CREATE ACCOUNT */}
+          {activeTab === 'signup' && signupStep === 'details' && (
+            <form onSubmit={handleSignupSubmit} className="space-y-3 animate-fade-in">
               <div>
                 <label className="block text-xs font-bold text-gray-700 mb-1">Full Name</label>
                 <div className="relative">
@@ -286,9 +373,9 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess, onNavigate
                   <input
                     type="email"
                     required
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    placeholder="aarav@gmail.com"
+                    value={signupEmail}
+                    onChange={(e) => setSignupEmail(e.target.value)}
+                    placeholder="your.email@gmail.com"
                     className="w-full pl-9 pr-4 py-2 rounded-xl border border-gray-300 text-xs focus:outline-none focus:border-[#900C3F]"
                   />
                 </div>
@@ -301,29 +388,29 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess, onNavigate
                   <input
                     type="password"
                     required
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    placeholder="Create a strong password"
+                    value={signupPassword}
+                    onChange={(e) => setSignupPassword(e.target.value)}
+                    placeholder="Create a strong password (min 6 chars)"
                     className="w-full pl-9 pr-4 py-2 rounded-xl border border-gray-300 text-xs focus:outline-none focus:border-[#900C3F]"
                   />
                 </div>
               </div>
 
               <div>
-                <label className="block text-xs font-bold text-gray-700 mb-1">Katraj Neighborhood / Area</label>
+                <label className="block text-xs font-bold text-gray-700 mb-1">Neighborhood</label>
                 <div className="relative">
                   <MapPin className="w-4 h-4 text-gray-400 absolute left-3 top-2.5" />
                   <input
                     type="text"
                     value={neighborhood}
                     onChange={(e) => setNeighborhood(e.target.value)}
-                    placeholder="e.g. Sukhsagar Nagar, Katraj Lake, Zoo Circle"
+                    placeholder="e.g. Near PICT, Katraj"
                     className="w-full pl-9 pr-4 py-2 rounded-xl border border-gray-300 text-xs focus:outline-none focus:border-[#900C3F]"
                   />
                 </div>
               </div>
 
-              {/* Profile Photo Upload */}
+              {/* Optional Profile Photo */}
               <div>
                 <label className="block text-xs font-bold text-gray-700 mb-1">Optional Profile Photo</label>
                 <div className="flex items-center space-x-3">
@@ -347,7 +434,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess, onNavigate
               <div>
                 <label className="block text-xs font-bold text-gray-700 mb-1">Interests & Specialities</label>
                 <div className="flex flex-wrap gap-1.5">
-                  {interestOptions.map(tag => (
+                  {interestOptions.map((tag) => (
                     <button
                       key={tag}
                       type="button"
@@ -366,20 +453,113 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess, onNavigate
 
               <button
                 type="submit"
-                className="w-full bg-[#900C3F] hover:bg-[#700931] text-white font-black py-2.5 rounded-xl text-xs shadow-md transition-all mt-2"
+                disabled={isSubmitting}
+                className="w-full bg-[#900C3F] hover:bg-[#700931] disabled:opacity-50 text-white font-black py-2.5 rounded-xl text-xs shadow-md transition-all mt-2 flex items-center justify-center space-x-2"
               >
-                Complete Registration & Sign In
+                {isSubmitting ? (
+                  <span>Sending Verification Code...</span>
+                ) : (
+                  <>
+                    <span>Verify Email & Create Account</span>
+                    <ArrowRight className="w-4 h-4" />
+                  </>
+                )}
               </button>
+
+              <p className="text-[10px] text-gray-400 text-center">
+                A 6-digit code will be sent to your email address.
+              </p>
+            </form>
+          )}
+
+          {activeTab === 'signup' && signupStep === 'otp' && (
+            <form onSubmit={handleVerifySignupOtp} className="space-y-4 animate-fade-in">
+              <div className="text-center space-y-1">
+                <div className="w-12 h-12 rounded-2xl bg-[#FFF0F5] text-[#900C3F] font-bold flex items-center justify-center mx-auto shadow-sm border border-[#FFC0CB]">
+                  <KeyRound className="w-6 h-6" />
+                </div>
+                <h3 className="text-lg font-black text-gray-900">Email OTP Verification</h3>
+                <p className="text-xs text-gray-500">
+                  Enter the 6-digit code sent to <strong className="text-gray-900">{signupEmail}</strong>
+                </p>
+              </div>
+
+              {otpPreview && (
+                <div className="bg-emerald-50 border border-emerald-200 text-emerald-900 rounded-xl p-2.5 text-xs flex items-center justify-between">
+                  <span>Demo email code: <strong className="font-mono tracking-widest text-[#900C3F]">{otpPreview}</strong></span>
+                  <button
+                    type="button"
+                    onClick={handleFillPreviewOtp}
+                    className="text-[11px] font-bold bg-[#900C3F] text-white px-2 py-0.5 rounded-lg hover:bg-[#700931]"
+                  >
+                    Auto-Fill
+                  </button>
+                </div>
+              )}
+
+              <div>
+                <label className="block text-xs font-bold text-gray-700 text-center mb-2">Enter 6-Digit Code</label>
+                <div className="flex justify-center items-center gap-2" onPaste={handleOtpPaste}>
+                  {otpDigits.map((digit, index) => (
+                    <input
+                      key={index}
+                      ref={(element) => { otpInputRefs.current[index] = element; }}
+                      type="text"
+                      inputMode="numeric"
+                      maxLength={1}
+                      value={digit}
+                      onChange={(event) => handleOtpDigitChange(index, event.target.value)}
+                      onKeyDown={(event) => {
+                        if (event.key === 'Backspace' && !otpDigits[index] && index > 0) {
+                          otpInputRefs.current[index - 1]?.focus();
+                        }
+                      }}
+                      className="w-10 sm:w-11 h-12 text-center text-lg font-mono font-black rounded-xl border-2 border-gray-300 bg-[#FFF0F5]/40 focus:bg-white focus:outline-none focus:border-[#900C3F] focus:ring-2 focus:ring-[#FFC0CB]"
+                    />
+                  ))}
+                </div>
+              </div>
+
+              <button
+                type="submit"
+                disabled={isSubmitting || otpDigits.join('').length !== 6}
+                className="w-full bg-[#900C3F] hover:bg-[#700931] disabled:opacity-50 text-white font-black py-3 rounded-xl text-sm shadow-md transition-all"
+              >
+                {isSubmitting ? 'Verifying Code...' : 'Verify Code & Complete Registration'}
+              </button>
+
+              <div className="flex items-center justify-between text-xs">
+                <button
+                  type="button"
+                  onClick={() => { setSignupStep('details'); setErrorMessage(''); }}
+                  className="text-gray-500 hover:text-gray-800 font-bold flex items-center gap-1"
+                >
+                  <ArrowLeft className="w-3.5 h-3.5" />
+                  Edit Details
+                </button>
+                {resendCooldown > 0 ? (
+                  <span className="text-gray-400">Resend in {resendCooldown}s</span>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => { void handleResendSignupOtp(); }}
+                    className="text-[#900C3F] hover:underline font-bold flex items-center gap-1"
+                  >
+                    <RefreshCw className="w-3.5 h-3.5" />
+                    Resend Code
+                  </button>
+                )}
+              </div>
             </form>
           )}
 
           {/* TAB 3: FORGOT PASSWORD FORM */}
           {activeTab === 'forgot' && (
-            <form onSubmit={handleForgotSubmit} className="space-y-4">
+            <form onSubmit={handleForgotSubmit} className="space-y-4 animate-fade-in">
               <div className="text-left">
                 <h3 className="text-base font-extrabold text-gray-900">Reset Your Password</h3>
                 <p className="text-xs text-gray-500 mt-0.5">
-                  Enter your registered Katraj Community Closet email address and we'll send you a password reset link.
+                  Enter your registered Community Closet email address and we'll send you a password reset link.
                 </p>
               </div>
 
@@ -390,11 +570,11 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess, onNavigate
                     <span>Password Reset Link Sent!</span>
                   </div>
                   <p className="text-[11px] text-emerald-700">
-                    We sent an email to <strong>{email}</strong>. Follow the link in the message to create your new password.
+                    We sent an email to <strong>{forgotEmail}</strong>. Follow the link in the message to create your new password.
                   </p>
                   <button
                     type="button"
-                    onClick={() => setActiveTab('login')}
+                    onClick={() => { setActiveTab('login'); setResetSent(false); }}
                     className="text-xs font-bold text-[#900C3F] underline pt-1 block"
                   >
                     Return to Sign In
@@ -409,8 +589,8 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess, onNavigate
                       <input
                         type="email"
                         required
-                        value={email}
-                        onChange={(e) => setEmail(e.target.value)}
+                        value={forgotEmail}
+                        onChange={(e) => setForgotEmail(e.target.value)}
                         placeholder="your.email@gmail.com"
                         className="w-full pl-9 pr-4 py-2.5 rounded-xl border border-gray-300 text-sm focus:outline-none focus:border-[#900C3F]"
                       />
@@ -426,7 +606,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess, onNavigate
 
                   <button
                     type="button"
-                    onClick={() => setActiveTab('login')}
+                    onClick={() => { setActiveTab('login'); setErrorMessage(''); }}
                     className="w-full text-xs font-bold text-gray-500 hover:text-gray-800 py-1"
                   >
                     Cancel and Return to Sign In

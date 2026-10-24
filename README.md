@@ -6,7 +6,7 @@
 
 ## 🚀 Full-Stack Features & Data Architecture
 
-- **Supabase**: Supabase Auth handles email/password and Google OAuth. Application collections are persisted in `public.app_records`, with row-level security policies scoped to the signed-in user and transaction participants.
+- **Supabase**: Supabase Auth handles email OTP signup, email/password sign-in, and Google OAuth. Application collections are persisted in `public.app_records`, with row-level security policies scoped to the signed-in user and transaction participants.
 - **Collections**: profiles, listings, requests, messages, notifications, reviews, wishlists, badges, reports, complaints, and categories.
 
 ---
@@ -42,6 +42,8 @@ In the Supabase Dashboard, open **SQL Editor**, paste and run [`server/db/schema
 The previous app code did not connect to PostgreSQL; it used localStorage and simulated authentication. This change replaces that runtime with Supabase, but it does not import any existing browser localStorage or external PostgreSQL data. New accounts and records are created in Supabase after the schema is installed.
 
 In **Authentication > URL Configuration**, set the site URL to your app URL and add your local/deployed URLs to the redirect allow-list. To use Google sign-in, enable Google under **Authentication > Providers** and configure its OAuth credentials there.
+
+For signup email verification codes, configure the Supabase email template to include the `{{ .Token }}` code.
 
 Admin access is based on the trusted `app_metadata.role` claim. Grant that claim to an account using a trusted Supabase Admin API/server-side process; never set it from client-side user metadata. Do not expose a service-role key in `VITE_*` variables.
 

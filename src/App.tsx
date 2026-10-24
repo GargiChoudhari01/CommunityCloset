@@ -76,6 +76,33 @@ export function App() {
     }
 
     let active = true;
+
+    // Listen for auth state changes (e.g. email confirmation redirect or token verification)
+    const { data: { subscription } } = requireSupabase().auth.onAuthStateChange(async (_event, session) => {
+      if (session?.user && active) {
+        try {
+          const authUser = mapAuthUser(session.user);
+          await storage.load(authUser);
+          if (active) {
+            const profile = {
+              ...(storage.getUsers().find((entry) => entry.id === authUser.id) || authUser),
+              email: authUser.email,
+              role: authUser.role,
+              verified: authUser.verified,
+            };
+            storage.setCurrentUser(profile);
+            setUser(profile);
+            refreshData();
+            if (window.location.hash === '#login' || !window.location.hash) {
+              navigateTo('#home');
+            }
+          }
+        } catch (err) {
+          reportError(err);
+        }
+      }
+    });
+
     const initialize = async () => {
       const { data, error } = await requireSupabase().auth.getSession();
       if (error) throw error;
@@ -106,6 +133,7 @@ export function App() {
 
     return () => {
       active = false;
+      subscription?.unsubscribe();
       window.removeEventListener('app-error', showError);
     };
   }, []);
@@ -156,6 +184,15 @@ export function App() {
     } catch (error) {
       reportError(error);
     }
+  };
+
+  const handleLogout = () => {
+    void signOut().then(() => {
+      setUser(null);
+      setIsAdminAuthenticated(false);
+      storage.clearCurrentUser();
+      navigateTo('#login');
+    }).catch(reportError);
   };
 
   const handleToggleWishlist = async (id: string, e: React.MouseEvent) => {
@@ -280,14 +317,7 @@ export function App() {
           unreadMessagesCount={messages.length > 0 ? 1 : 0}
           wishlistCount={wishlistIds.length}
           onOpenAuth={() => setAuthModalOpen(true)}
-          onLogout={() => {
-            void signOut().then(() => {
-              setUser(null);
-              setIsAdminAuthenticated(false);
-              storage.clearCurrentUser();
-              navigateTo('#login');
-            }).catch(reportError);
-          }}
+          onLogout={handleLogout}
         />
 
         {appError && (
@@ -423,6 +453,7 @@ export function App() {
                 }).catch(reportError);
               }}
               onToggleWishlist={handleToggleWishlist}
+              onLogout={handleLogout}
             />
           )}
 

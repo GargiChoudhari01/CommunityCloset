@@ -2,8 +2,11 @@ import { Router } from 'express';
 
 export const authRouter = Router();
 
+// In-memory OTP storage for the server
+const serverOtpStore = new Map<string, { code: string; expiresAt: number }>();
+
 authRouter.post('/register', (req, res) => {
-  const { name, email, password, locationAddress } = req.body;
+  const { name, email, locationAddress } = req.body;
   const newUser = {
     id: `u-${Date.now()}`,
     name: name || 'Katraj Resident',
@@ -54,6 +57,80 @@ authRouter.post('/login', (req, res) => {
       itemsSharedCount: 5,
       itemsBorrowedCount: 3,
       createdAt: '2026-01-15T10:00:00.000Z'
+    }
+  });
+});
+
+// Send Email OTP endpoint
+authRouter.post('/send-otp', (req, res) => {
+  const { email, code: clientProvidedCode } = req.body;
+  if (!email) {
+    return res.status(400).json({ success: false, message: 'Email address is required.' });
+  }
+
+  const normalized = String(email).trim().toLowerCase();
+  const otpCode = clientProvidedCode || Math.floor(100000 + Math.random() * 900000).toString();
+
+  serverOtpStore.set(normalized, {
+    code: otpCode,
+    expiresAt: Date.now() + 10 * 60 * 1000,
+  });
+
+  console.log(`[Email Service] OTP Verification code for ${normalized}: ${otpCode}`);
+
+  res.json({
+    success: true,
+    message: `Verification code sent to ${normalized}.`,
+    previewCode: otpCode,
+  });
+});
+
+// Verify Email OTP endpoint
+authRouter.post('/verify-otp', (req, res) => {
+  const { email, otp } = req.body;
+  if (!email || !otp) {
+    return res.status(400).json({ success: false, message: 'Email and OTP code are required.' });
+  }
+
+  const normalized = String(email).trim().toLowerCase();
+  const record = serverOtpStore.get(normalized);
+
+  if (!record) {
+    return res.status(400).json({ success: false, message: 'No OTP requested for this email.' });
+  }
+
+  if (Date.now() > record.expiresAt) {
+    serverOtpStore.delete(normalized);
+    return res.status(400).json({ success: false, message: 'Verification code has expired.' });
+  }
+
+  if (record.code !== String(otp).trim()) {
+    return res.status(400).json({ success: false, message: 'Invalid verification code.' });
+  }
+
+  serverOtpStore.delete(normalized);
+
+  res.json({
+    success: true,
+    token: `token_${Date.now()}`,
+    user: {
+      id: `u-${Date.now()}`,
+      name: normalized.split('@')[0],
+      email: normalized,
+      role: 'user',
+      avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=300&q=80',
+      locationAddress: 'Katraj, Pune, Maharashtra',
+      lat: 18.4582,
+      lng: 73.8512,
+      ecoPoints: 100,
+      co2SavedKg: 0,
+      verified: true,
+      status: 'active',
+      ratingAvg: 5.0,
+      reviewsCount: 0,
+      itemsSharedCount: 0,
+      itemsBorrowedCount: 0,
+      createdAt: new Date().toISOString(),
     }
   });
 });

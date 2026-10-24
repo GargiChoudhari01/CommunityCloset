@@ -1,11 +1,18 @@
 import React, { useState, useEffect } from 'react';
-import type { User, ResourceItem, Transaction, NotificationItem, ChatMessage, Category, Complaint, Report, AdminStats } from './types';
+import type { User, ResourceItem, BorrowRequest, NotificationItem, ChatMessage, Category, Complaint, Report, AdminStats } from './types';
 import { storage } from './services/storage';
 import { realtimeService } from './services/realtimeService';
+import { mapAuthUser, signOut } from './services/auth';
+import { isSupabaseConfigured, requireSupabase } from './services/supabase';
+import { reportError } from './services/reportError';
 import { Navbar } from './components/Navbar';
 import { Footer } from './components/Footer';
 import { AuthModal } from './components/AuthModal';
 import { ErrorBoundary } from './components/ErrorBoundary';
+
+// Auth Page
+import { LoginPage } from './pages/LoginPage';
+import { PasswordResetPage } from './pages/PasswordResetPage';
 
 // User Pages
 import { LandingPage } from './pages/LandingPage';
@@ -23,6 +30,7 @@ import { ProfilePage } from './pages/ProfilePage';
 import { ImpactDashboardPage } from './pages/ImpactDashboardPage';
 import { HelpFAQPage } from './pages/HelpFAQPage';
 import { ComplaintsPage } from './pages/ComplaintsPage';
+import { ProjectModePage } from './pages/ProjectModePage';
 
 // Admin Pages
 import { AdminLoginPage } from './pages/admin/AdminLoginPage';
@@ -36,15 +44,20 @@ import { AdminCategoriesPage } from './pages/admin/AdminCategoriesPage';
 import { AdminAnalyticsPage } from './pages/admin/AdminAnalyticsPage';
 
 export function App() {
-  const [currentPath, setCurrentPath] = useState<string>(window.location.hash || '#landing');
-  const [user, setUser] = useState<User | null>(storage.getCurrentUser());
+  const [currentPath, setCurrentPath] = useState<string>(window.location.hash || '#login');
+  const [isPasswordRecovery, setIsPasswordRecovery] = useState(
+    () => window.location.hash.includes('type=recovery') || window.location.hash.includes('reset-password')
+  );
+  const [user, setUser] = useState<User | null>(null);
+  const [isInitializing, setIsInitializing] = useState(true);
+  const [appError, setAppError] = useState('');
   const [authModalOpen, setAuthModalOpen] = useState(false);
   const [isAdminAuthenticated, setIsAdminAuthenticated] = useState(false);
 
   // App Data State
   const [users, setUsers] = useState<User[]>(storage.getUsers());
   const [items, setItems] = useState<ResourceItem[]>(storage.getItems());
-  const [transactions, setTransactions] = useState<Transaction[]>(storage.getTransactions());
+  const [transactions, setTransactions] = useState<BorrowRequest[]>(storage.getTransactions());
   const [wishlistIds, setWishlistIds] = useState<string[]>(storage.getWishlistIds());
   const [notifications, setNotifications] = useState<NotificationItem[]>(storage.getNotifications());
   const [messages, setMessages] = useState<ChatMessage[]>(storage.getMessages());
@@ -52,15 +65,90 @@ export function App() {
   const [complaints, setComplaints] = useState<Complaint[]>(storage.getComplaints());
   const [reports, setReports] = useState<Report[]>(storage.getReports());
 
+  useEffect(() => {
+    const showError = (event: Event) => setAppError((event as CustomEvent<string>).detail);
+    window.addEventListener('app-error', showError);
+
+    if (!isSupabaseConfigured) {
+      setAppError('Supabase is not configured. Set VITE_SUPABASE_URL and VITE_SUPABASE_PUBLISHABLE_KEY in your environment.');
+      setIsInitializing(false);
+      return () => window.removeEventListener('app-error', showError);
+    }
+
+    let active = true;
+
+    // Listen for auth state changes (e.g. email confirmation redirect or token verification)
+    const { data: { subscription } } = requireSupabase().auth.onAuthStateChange(async (_event, session) => {
+      if (session?.user && active) {
+        try {
+          const authUser = mapAuthUser(session.user);
+          await storage.load(authUser);
+          if (active) {
+            const profile = {
+              ...(storage.getUsers().find((entry) => entry.id === authUser.id) || authUser),
+              email: authUser.email,
+              role: authUser.role,
+              verified: authUser.verified,
+            };
+            storage.setCurrentUser(profile);
+            setUser(profile);
+            refreshData();
+            if (window.location.hash === '#login' || !window.location.hash) {
+              navigateTo('#home');
+            }
+          }
+        } catch (err) {
+          reportError(err);
+        }
+      }
+    });
+
+    const initialize = async () => {
+      const { data, error } = await requireSupabase().auth.getSession();
+      if (error) throw error;
+      if (data.session) {
+        const authUser = mapAuthUser(data.session.user);
+        await storage.load(authUser);
+        if (active) {
+          const profile = {
+            ...(storage.getUsers().find((entry) => entry.id === authUser.id) || authUser),
+            email: authUser.email,
+            role: authUser.role,
+            verified: authUser.verified,
+          };
+          storage.setCurrentUser(profile);
+          setUser(profile);
+          refreshData();
+        }
+      }
+      if (active) setIsInitializing(false);
+    };
+
+    void initialize().catch((error: unknown) => {
+      if (active) {
+        setAppError(error instanceof Error ? error.message : 'Unable to initialize Supabase.');
+        setIsInitializing(false);
+      }
+    });
+
+    return () => {
+      active = false;
+      subscription?.unsubscribe();
+      window.removeEventListener('app-error', showError);
+    };
+  }, []);
+
   // Listen for hash changes
   useEffect(() => {
     const handleHashChange = () => {
-      setCurrentPath(window.location.hash || '#landing');
+      const hash = window.location.hash || (user ? '#home' : '#login');
+      setCurrentPath(hash);
+      if (hash.includes('type=recovery') || hash.includes('reset-password')) setIsPasswordRecovery(true);
       window.scrollTo(0, 0);
     };
     window.addEventListener('hashchange', handleHashChange);
     return () => window.removeEventListener('hashchange', handleHashChange);
-  }, []);
+  }, [user]);
 
   const navigateTo = (path: string) => {
     window.location.hash = path;
@@ -79,16 +167,52 @@ export function App() {
     setReports(storage.getReports());
   };
 
-  const handleToggleWishlist = (id: string, e: React.MouseEvent) => {
-    e.stopPropagation();
-    storage.toggleWishlist(id);
-    setWishlistIds(storage.getWishlistIds());
+  const handleLoginSuccess = async (authenticatedUser: User) => {
+    try {
+      await storage.load(authenticatedUser);
+      const profile = {
+        ...(storage.getUsers().find((entry) => entry.id === authenticatedUser.id) || authenticatedUser),
+        email: authenticatedUser.email,
+        role: authenticatedUser.role,
+        verified: authenticatedUser.verified,
+      };
+      storage.setCurrentUser(profile);
+      setUser(profile);
+      refreshData();
+      if (currentPath !== '#admin/login') navigateTo('#home');
+      setAppError('');
+    } catch (error) {
+      reportError(error);
+    }
   };
 
-  const handleSendMessage = (newMsg: ChatMessage) => {
-    storage.addMessage(newMsg);
-    setMessages(storage.getMessages());
-    realtimeService.publish(`tx-${newMsg.transactionId}`, newMsg);
+  const handleLogout = () => {
+    void signOut().then(() => {
+      setUser(null);
+      setIsAdminAuthenticated(false);
+      storage.clearCurrentUser();
+      navigateTo('#login');
+    }).catch(reportError);
+  };
+
+  const handleToggleWishlist = async (id: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    try {
+      await storage.toggleWishlist(id);
+      setWishlistIds(storage.getWishlistIds());
+    } catch (error) {
+      reportError(error);
+    }
+  };
+
+  const handleSendMessage = async (newMsg: ChatMessage) => {
+    try {
+      await storage.addMessage(newMsg);
+      setMessages(storage.getMessages());
+      realtimeService.publish(`tx-${newMsg.transactionId}`, newMsg);
+    } catch (error) {
+      reportError(error);
+    }
   };
 
   // Helper route matchers
@@ -108,13 +232,77 @@ export function App() {
     totalTransactions: transactions.length,
     pendingComplaints: complaints.filter(c => c.status === 'open' || c.status === 'under_review').length,
     pendingReports: reports.filter(r => r.status === 'pending').length,
-    totalCO2SavedKg: 142.5,
-    totalMoneySavedInr: 48200
+    totalCO2SavedKg: transactions.filter(t => t.status === 'completed').length * 2.8,
+    totalMoneySavedInr: transactions.filter(t => t.status === 'completed').length * 450
   };
 
   const unreadNotifs = notifications.filter(n => !n.readStatus).length;
   const wishlistedItems = items.filter(i => wishlistIds.includes(i.id));
   const userListings = items.filter(i => user && i.userId === user.id);
+
+  // ENTRY POINT: LOGIN-FIRST FLOW GATING
+  // If user is not authenticated and trying to access main app, show Login page
+  if (isInitializing) {
+    return <div className="min-h-screen flex items-center justify-center text-sm text-gray-600">Connecting to Supabase…</div>;
+  }
+
+  if (appError && !user) {
+    return (
+      <div className="min-h-screen flex items-center justify-center p-6">
+        <div role="alert" className="max-w-lg rounded-2xl border border-red-200 bg-red-50 p-5 text-sm text-red-800">
+          <h1 className="font-bold">Unable to connect to CommunityCloset</h1>
+          <p className="mt-2">{appError}</p>
+          <p className="mt-2">Check the Supabase project URL, publishable key, and database setup.</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (user && user.status !== 'active') {
+    return (
+      <div className="min-h-screen flex items-center justify-center p-6">
+        <div className="max-w-lg rounded-2xl border border-red-200 bg-red-50 p-5 text-sm text-red-800">
+          <h1 className="font-bold">This account is inactive</h1>
+          <p className="mt-2">Contact a CommunityCloset administrator if you believe this is a mistake.</p>
+          <button
+            className="mt-4 rounded-lg bg-red-700 px-4 py-2 font-bold text-white"
+            onClick={() => {
+              void signOut().then(() => {
+                storage.clearCurrentUser();
+                setUser(null);
+                setIsAdminAuthenticated(false);
+                navigateTo('#login');
+              }).catch(reportError);
+            }}
+          >
+            Sign out
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  if (isPasswordRecovery) {
+    return (
+      <PasswordResetPage
+        onComplete={() => {
+          setIsPasswordRecovery(false);
+          navigateTo('#home');
+        }}
+      />
+    );
+  }
+
+  if (!user) {
+    return (
+      <ErrorBoundary>
+        <LoginPage
+          onLoginSuccess={handleLoginSuccess}
+          onNavigateAdmin={() => navigateTo('#admin/login')}
+        />
+      </ErrorBoundary>
+    );
+  }
 
   return (
     <ErrorBoundary>
@@ -129,16 +317,19 @@ export function App() {
           unreadMessagesCount={messages.length > 0 ? 1 : 0}
           wishlistCount={wishlistIds.length}
           onOpenAuth={() => setAuthModalOpen(true)}
-          onLogout={() => {
-            setUser(null);
-            localStorage.removeItem('community_closet_current_user_v2');
-            navigateTo('#landing');
-          }}
+          onLogout={handleLogout}
         />
+
+        {appError && (
+          <div role="alert" className="mx-auto mt-3 w-full max-w-7xl rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
+            {appError}
+            <button className="ml-3 font-bold underline" onClick={() => setAppError('')}>Dismiss</button>
+          </div>
+        )}
 
         {/* Main View Router */}
         <main className="flex-1">
-          {/* USER FRONTEND ROUTES (15 Views) */}
+          {/* USER FRONTEND ROUTES */}
           {currentPath === '#landing' && (
             <LandingPage
               onNavigate={navigateTo}
@@ -148,9 +339,9 @@ export function App() {
             />
           )}
 
-          {currentPath === '#home' && (
+          {(currentPath === '#home' || currentPath === '#login') && user && (
             <HomePage
-              user={user || users[0]}
+              user={user}
               items={items}
               categories={categories}
               wishlistIds={wishlistIds}
@@ -172,16 +363,16 @@ export function App() {
           {isItemDetailsRoute && (
             <ItemDetailsPage
               item={activeItem}
-              currentUser={user || users[0]}
+              currentUser={user!}
               isWishlisted={wishlistIds.includes(activeItemId || '')}
               onNavigate={navigateTo}
               onToggleWishlist={handleToggleWishlist}
             />
           )}
 
-          {currentPath === '#create-listing' && (
+          {currentPath === '#create-listing' && user && (
             <AddItemPage
-              currentUser={user || users[0]}
+              currentUser={user}
               categories={categories}
               onNavigate={navigateTo}
               onAdded={refreshData}
@@ -206,6 +397,13 @@ export function App() {
             />
           )}
 
+          {currentPath === '#project-mode' && (
+            <ProjectModePage
+              items={items}
+              onNavigate={navigateTo}
+            />
+          )}
+
           {currentPath === '#wishlist' && (
             <WishlistPage
               wishlistedItems={wishlistedItems}
@@ -215,9 +413,9 @@ export function App() {
             />
           )}
 
-          {currentPath === '#messages' && (
+          {currentPath === '#messages' && user && (
             <MessagesPage
-              currentUser={user || users[0]}
+              currentUser={user}
               transactions={transactions}
               messages={messages}
               onSendMessage={handleSendMessage}
@@ -232,27 +430,30 @@ export function App() {
             />
           )}
 
-          {currentPath === '#transactions' && (
+          {currentPath === '#transactions' && user && (
             <TransactionsPage
-              currentUser={user || users[0]}
+              currentUser={user}
               transactions={transactions}
               onNavigate={navigateTo}
               onRefresh={refreshData}
             />
           )}
 
-          {currentPath === '#profile' && (
+          {currentPath === '#profile' && user && (
             <ProfilePage
-              user={user || users[0]}
+              user={user}
               userListings={userListings}
               wishlistIds={wishlistIds}
               onNavigate={navigateTo}
               onUpdateUser={(updated) => {
-                setUser(updated);
-                storage.setCurrentUser(updated);
-                refreshData();
+                void storage.updateUser(updated).then(() => {
+                  setUser(updated);
+                  storage.setCurrentUser(updated);
+                  refreshData();
+                }).catch(reportError);
               }}
               onToggleWishlist={handleToggleWishlist}
+              onLogout={handleLogout}
             />
           )}
 
@@ -264,17 +465,18 @@ export function App() {
             <HelpFAQPage onNavigate={navigateTo} />
           )}
 
-          {currentPath === '#complaints' && (
+          {currentPath === '#complaints' && user && (
             <ComplaintsPage
-              currentUser={user || users[0]}
+              currentUser={user}
               complaints={complaints}
               onSubmitted={refreshData}
             />
           )}
 
-          {/* ADMIN PORTAL ROUTES (9 Views) */}
+          {/* ADMIN PORTAL ROUTES */}
           {isAdminRoute && !isAdminAuthenticated && (
             <AdminLoginPage
+              currentUser={user}
               onLoginSuccess={() => {
                 setIsAdminAuthenticated(true);
                 navigateTo('#admin/dashboard');
@@ -354,10 +556,7 @@ export function App() {
         <AuthModal
           isOpen={authModalOpen}
           onClose={() => setAuthModalOpen(false)}
-          onSuccess={(loggedUser) => {
-            setUser(loggedUser);
-            refreshData();
-          }}
+          onSuccess={handleLoginSuccess}
         />
 
       </div>
