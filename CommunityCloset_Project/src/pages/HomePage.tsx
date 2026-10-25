@@ -49,7 +49,7 @@ export const HomePage: React.FC<HomePageProps> = ({
             Katraj Community Hub
           </span>
           <h1 className="text-2xl sm:text-3xl font-black text-gray-900 mt-2">
-            Welcome back, {user.name.split(' ')[0]}! 👋
+            Welcome, {user.name.split(' ')[0]}! 👋
           </h1>
           <p className="text-xs sm:text-sm text-gray-600 mt-1">
             You have earned <strong className="text-[#900C3F]">{user.ecoPoints} eco-points</strong> and prevented <strong>{user.co2SavedKg} kg CO₂</strong> in Katraj!

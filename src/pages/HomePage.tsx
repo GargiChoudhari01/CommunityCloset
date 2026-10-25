@@ -49,7 +49,7 @@ export const HomePage: React.FC<HomePageProps> = ({
             Katraj Community Hub
           </span>
           <h1 className="text-2xl sm:text-3xl font-black text-gray-900 mt-2">
-            Welcome back, {user.name.split(' ')[0]}! 👋
+            Welcome,  {user.name.split(' ')[0]}! 
           </h1>
           <p className="text-xs sm:text-sm text-gray-600 mt-1">
             Neighbourhood: <strong className="text-gray-900">{user.locationAddress || 'Katraj, Pune'}</strong> • Member since {new Date(user.createdAt || Date.now()).getFullYear()}

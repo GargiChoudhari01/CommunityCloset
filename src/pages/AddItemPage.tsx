@@ -26,7 +26,7 @@ export const AddItemPage: React.FC<AddItemPageProps> = ({
   const [condition, setCondition] = useState<'Like New' | 'Good' | 'Fair'>('Good');
   const [depositAmount, setDepositAmount] = useState(300);
   const [maxDurationDays] = useState(5);
-  const [locationName, setLocationName] = useState('Rajiv Gandhi Zoo Circle, Katraj, Pune');
+  const [locationName, setLocationName] = useState('PICT, Katraj, Pune');
   const [imageUrl, setImageUrl] = useState('');
   const [aiEnhancing, setAiEnhancing] = useState(false);
 
@@ -91,8 +91,8 @@ export const AddItemPage: React.FC<AddItemPageProps> = ({
 
       <div className="bg-white p-6 sm:p-8 rounded-3xl border border-[#FFC0CB]/80 shadow-md space-y-6">
         <div>
-          <h1 className="text-2xl font-black text-gray-900">List an Item in Katraj Closet</h1>
-          <p className="text-xs text-gray-500 mt-1">Lend a rarely used tool or offer leftover construction materials to neighbors.</p>
+          <h1 className="text-2xl font-black text-gray-900">List an Item in Community Closet</h1>
+          <p className="text-xs text-gray-500 mt-1">Lend or giveaway a rarely used items to neighbors.</p>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-5">
@@ -105,7 +105,7 @@ export const AddItemPage: React.FC<AddItemPageProps> = ({
                 required
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
-                placeholder="e.g. Bosch Cordless Impact Drill 18V"
+                placeholder="e.g. Formal Shoes"
                 className="w-full px-4 py-2.5 rounded-xl border border-gray-300 text-sm focus:outline-none focus:border-[#900C3F]"
               />
             </div>
@@ -132,9 +132,9 @@ export const AddItemPage: React.FC<AddItemPageProps> = ({
                 onChange={(e: any) => setType(e.target.value)}
                 className="w-full px-3 py-2 rounded-xl border border-gray-300 text-xs font-semibold focus:outline-none focus:border-[#900C3F]"
               >
-                <option value="lend">Resource Library (Lend)</option>
-                <option value="giveaway">Material Exchange (Free)</option>
-                <option value="exchange">Trade & Swap</option>
+                <option value="lend">Lend</option>
+                <option value="giveaway">Giveaway</option>
+                <option value="exchange">Sell</option>
               </select>
             </div>
 
@@ -197,7 +197,7 @@ export const AddItemPage: React.FC<AddItemPageProps> = ({
           </div>
 
           <div>
-            <label className="block text-xs font-bold text-gray-700 mb-1">Katraj Location / Pickup Point</label>
+            <label className="block text-xs font-bold text-gray-700 mb-1">Pickup Point</label>
             <input
               type="text"
               required

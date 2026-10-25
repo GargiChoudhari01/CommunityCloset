@@ -94,9 +94,9 @@ export const ExplorePage: React.FC<ExplorePageProps> = ({
               className="w-full px-3 py-2 rounded-xl border border-gray-200 text-xs font-semibold text-gray-700 bg-white focus:outline-none focus:border-[#900C3F]"
             >
               <option value="All">All Types (Lend & Giveaway)</option>
-              <option value="lend">Resource Library (Lend)</option>
-              <option value="giveaway">Material Exchange (Free)</option>
-              <option value="exchange">Trade & Swap</option>
+             <option value="lend">Lend</option>
+                <option value="giveaway">Giveaway</option>
+                <option value="exchange">Sell</option>
             </select>
           </div>
 
