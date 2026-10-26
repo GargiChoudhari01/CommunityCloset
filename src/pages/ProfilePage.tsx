@@ -149,6 +149,7 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({
               <ItemCard
                 key={item.id}
                 item={item}
+                currentUserId={user.id}
                 isWishlisted={wishlistIds.includes(item.id)}
                 onToggleWishlist={onToggleWishlist}
                 onClick={(id) => onNavigate(`#item/${id}`)}

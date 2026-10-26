@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Sparkles, ArrowLeft } from 'lucide-react';
-import type { ResourceItem, User, Category } from '../types';
+import type { ResourceItem, User, Category, ResourceType } from '../types';
 import { storage } from '../services/storage';
 import { aiService } from '../services/aiService';
 import { reportError } from '../services/reportError';
@@ -22,10 +22,12 @@ export const AddItemPage: React.FC<AddItemPageProps> = ({
   const [description, setDescription] = useState('');
   const [category, setCategory] = useState(categories[0]?.name || 'Power Tools');
   const [itemKind] = useState<'tool' | 'material'>('tool');
-  const [type, setType] = useState<'lend' | 'giveaway' | 'exchange'>('lend');
+  const [type, setType] = useState<ResourceType>('lend');
   const [condition, setCondition] = useState<'Like New' | 'Good' | 'Fair'>('Good');
   const [depositAmount, setDepositAmount] = useState(300);
-  const [maxDurationDays] = useState(5);
+  const [maxDurationDays, setMaxDurationDays] = useState(5);
+  const [salePrice, setSalePrice] = useState('');
+  const [exchangePreference, setExchangePreference] = useState('');
   const [locationName, setLocationName] = useState('PICT, Katraj, Pune');
   const [imageUrl, setImageUrl] = useState('');
   const [aiEnhancing, setAiEnhancing] = useState(false);
@@ -55,8 +57,10 @@ export const AddItemPage: React.FC<AddItemPageProps> = ({
       type,
       status: 'available',
       condition,
-      depositAmount: Number(depositAmount),
-      maxDurationDays: Number(maxDurationDays),
+      depositAmount: type === 'lend' ? Number(depositAmount) : 0,
+      maxDurationDays: type === 'lend' ? Number(maxDurationDays) : 0,
+      salePrice: type === 'sale' ? Number(salePrice) : undefined,
+      exchangePreference: type === 'exchange' ? exchangePreference.trim() : undefined,
       locationName,
       lat: 18.4575,
       lng: 73.8508,
@@ -92,7 +96,7 @@ export const AddItemPage: React.FC<AddItemPageProps> = ({
       <div className="bg-white p-6 sm:p-8 rounded-3xl border border-[#FFC0CB]/80 shadow-md space-y-6">
         <div>
           <h1 className="text-2xl font-black text-gray-900">List an Item in Community Closet</h1>
-          <p className="text-xs text-gray-500 mt-1">Lend or giveaway a rarely used items to neighbors.</p>
+          <p className="text-xs text-gray-500 mt-1">Lend, sell, exchange, or give away items to your neighbors.</p>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-5">
@@ -129,12 +133,14 @@ export const AddItemPage: React.FC<AddItemPageProps> = ({
               <label className="block text-xs font-bold text-gray-700 mb-1">Listing Type</label>
               <select
                 value={type}
-                onChange={(e: any) => setType(e.target.value)}
+                onChange={(e) => setType(e.target.value as ResourceType)}
                 className="w-full px-3 py-2 rounded-xl border border-gray-300 text-xs font-semibold focus:outline-none focus:border-[#900C3F]"
               >
                 <option value="lend">Lend</option>
                 <option value="giveaway">Giveaway</option>
-                <option value="exchange">Sell</option>
+                <option value="donate">Donate</option>
+                <option value="exchange">Exchange</option>
+                <option value="sale">For Sale</option>
               </select>
             </div>
 
@@ -142,7 +148,7 @@ export const AddItemPage: React.FC<AddItemPageProps> = ({
               <label className="block text-xs font-bold text-gray-700 mb-1">Condition</label>
               <select
                 value={condition}
-                onChange={(e: any) => setCondition(e.target.value)}
+                onChange={(e) => setCondition(e.target.value as 'Like New' | 'Good' | 'Fair')}
                 className="w-full px-3 py-2 rounded-xl border border-gray-300 text-xs font-semibold focus:outline-none focus:border-[#900C3F]"
               >
                 <option value="Like New">Like New</option>
@@ -151,16 +157,61 @@ export const AddItemPage: React.FC<AddItemPageProps> = ({
               </select>
             </div>
 
+            {type === 'lend' && (
+              <div>
+                <label className="block text-xs font-bold text-gray-700 mb-1">Security Deposit (₹)</label>
+                <input
+                  type="number"
+                  min="0"
+                  value={depositAmount}
+                  onChange={(e) => setDepositAmount(Number(e.target.value))}
+                  className="w-full px-3 py-2 rounded-xl border border-gray-300 text-xs font-semibold focus:outline-none focus:border-[#900C3F]"
+                />
+              </div>
+            )}
+          </div>
+
+          {type === 'lend' && (
             <div>
-              <label className="block text-xs font-bold text-gray-700 mb-1">Deposit (₹)</label>
+              <label className="block text-xs font-bold text-gray-700 mb-1">Maximum Borrow Duration (days)</label>
               <input
                 type="number"
-                value={depositAmount}
-                onChange={(e) => setDepositAmount(Number(e.target.value))}
-                className="w-full px-3 py-2 rounded-xl border border-gray-300 text-xs font-semibold focus:outline-none focus:border-[#900C3F]"
+                min="1"
+                required
+                value={maxDurationDays}
+                onChange={(e) => setMaxDurationDays(Number(e.target.value))}
+                className="w-full px-3 py-2 rounded-xl border border-gray-300 text-sm font-semibold focus:outline-none focus:border-[#900C3F]"
               />
             </div>
-          </div>
+          )}
+
+          {type === 'sale' && (
+            <div>
+              <label className="block text-xs font-bold text-gray-700 mb-1">Sale Price (₹)</label>
+              <input
+                type="number"
+                min="0"
+                required
+                value={salePrice}
+                onChange={(e) => setSalePrice(e.target.value)}
+                className="w-full px-3 py-2 rounded-xl border border-gray-300 text-sm font-semibold focus:outline-none focus:border-[#900C3F]"
+              />
+            </div>
+          )}
+
+          {type === 'exchange' && (
+            <div>
+              <label className="block text-xs font-bold text-gray-700 mb-1">What would you like in exchange?</label>
+              <input
+                type="text"
+                required
+                value={exchangePreference}
+                onChange={(e) => setExchangePreference(e.target.value)}
+                placeholder="e.g. A similar hand tool or gardening supplies"
+                className="w-full px-4 py-2.5 rounded-xl border border-gray-300 text-sm focus:outline-none focus:border-[#900C3F]"
+              />
+            </div>
+          )}
 
           <div>
             <div className="flex items-center justify-between mb-1">

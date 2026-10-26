@@ -343,7 +343,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({
             >
               <div>
                 <label className="block text-xs font-bold text-gray-700 mb-1">
-                  Email Address or Phone Number
+                  Email Address
                 </label>
 
                 <div className="relative">

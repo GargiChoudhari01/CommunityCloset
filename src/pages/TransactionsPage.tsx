@@ -96,13 +96,22 @@ export const TransactionsPage: React.FC<TransactionsPageProps> = ({
                     </>
                   )}
 
-                  {(tx.status === 'accepted' || tx.status === 'pending' || tx.status === 'active') && (
+                  {(tx.status === 'accepted' || tx.status === 'active') && (
                     <button
                       onClick={() => { void handleUpdateStatus(tx.id, 'completed'); }}
                       className="bg-[#900C3F] hover:bg-[#700931] text-white px-4 py-2 rounded-xl text-xs font-bold shadow transition-all flex items-center space-x-1"
                     >
                       <CheckCircle2 className="w-3.5 h-3.5" />
                       <span>Confirm Return</span>
+                    </button>
+                  )}
+
+                  {tx.status === 'pending' && !isLender && (
+                    <button
+                      onClick={() => { void handleUpdateStatus(tx.id, 'cancelled'); }}
+                      className="bg-gray-100 text-gray-700 hover:bg-gray-200 px-3 py-2 rounded-xl text-xs font-bold transition-all"
+                    >
+                      Cancel Request
                     </button>
                   )}
 

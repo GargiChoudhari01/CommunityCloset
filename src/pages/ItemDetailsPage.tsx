@@ -1,8 +1,10 @@
 import React, { useState } from 'react';
-import { Heart, MapPin, ShieldCheck, Flag, ArrowLeft, Calendar, MessageSquare } from 'lucide-react';
+import { Heart, MapPin, ShieldCheck, Flag, ArrowLeft, Calendar, MessageSquare, Pencil, Trash2 } from 'lucide-react';
 import type { ResourceItem, User } from '../types';
 import { BorrowRequestModal } from '../components/BorrowRequestModal';
 import { ReportModal } from '../components/ReportModal';
+import { storage } from '../services/storage';
+import { reportError } from '../services/reportError';
 
 interface ItemDetailsPageProps {
   item: ResourceItem | null;
@@ -10,6 +12,7 @@ interface ItemDetailsPageProps {
   isWishlisted: boolean;
   onNavigate: (path: string) => void;
   onToggleWishlist: (id: string, e: React.MouseEvent) => void;
+  onDeleted: () => void;
 }
 
 export const ItemDetailsPage: React.FC<ItemDetailsPageProps> = ({
@@ -17,11 +20,13 @@ export const ItemDetailsPage: React.FC<ItemDetailsPageProps> = ({
   currentUser,
   isWishlisted,
   onNavigate,
-  onToggleWishlist
+  onToggleWishlist,
+  onDeleted
 }) => {
   const [borrowModalOpen, setBorrowModalOpen] = useState(false);
   const [reportModalOpen, setReportModalOpen] = useState(false);
   const [activeImageIndex, setActiveImageIndex] = useState(0);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   if (!item) {
     return (
@@ -33,6 +38,23 @@ export const ItemDetailsPage: React.FC<ItemDetailsPageProps> = ({
       </div>
     );
   }
+
+  const isOwner = item.userId === currentUser.id;
+  const isBorrowListing = item.type === 'lend' || item.type === 'borrow';
+  const canBorrow = isBorrowListing && item.status === 'available' && !isOwner;
+
+  const handleDelete = async () => {
+    if (!isOwner || !window.confirm('Remove this listing from the available catalog? Its transaction history will be retained.')) return;
+    setIsDeleting(true);
+    try {
+      await storage.deleteItem(item.id);
+      onDeleted();
+      onNavigate('#explore');
+    } catch (error) {
+      reportError(error);
+      setIsDeleting(false);
+    }
+  };
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8 animate-fade-in">
@@ -107,19 +129,36 @@ export const ItemDetailsPage: React.FC<ItemDetailsPageProps> = ({
             <p className="text-xs text-gray-600 leading-relaxed whitespace-pre-line">{item.description}</p>
           </div>
 
-          {/* Pricing & Duration */}
-          <div className="grid grid-cols-2 gap-4 bg-[#FFF0F5] p-5 rounded-3xl border border-[#FFC0CB]">
-            <div>
-              <span className="text-[11px] font-bold text-gray-500 uppercase block">Security Deposit</span>
-              <span className="text-xl font-black text-[#900C3F]">
-                {item.depositAmount > 0 ? `₹${item.depositAmount}` : 'Free'}
+          {isBorrowListing && (
+            <div className="grid grid-cols-2 gap-4 bg-[#FFF0F5] p-5 rounded-3xl border border-[#FFC0CB]">
+              <div>
+                <span className="text-[11px] font-bold text-gray-500 uppercase block">Security Deposit</span>
+                <span className="text-xl font-black text-[#900C3F]">
+                  {item.depositAmount > 0 ? `₹${item.depositAmount}` : 'Free'}
+                </span>
+              </div>
+              <div>
+                <span className="text-[11px] font-bold text-gray-500 uppercase block">Max Borrow Duration</span>
+                <span className="text-xl font-black text-gray-900">{item.maxDurationDays} Days</span>
+              </div>
+            </div>
+          )}
+
+          {item.type === 'sale' && (
+            <div className="bg-[#FFF0F5] p-5 rounded-3xl border border-[#FFC0CB]">
+              <span className="text-[11px] font-bold text-gray-500 uppercase block">Sale Price</span>
+              <span className="text-2xl font-black text-[#900C3F]">
+                {typeof item.salePrice === 'number' ? `₹${item.salePrice}` : 'Price not set'}
               </span>
             </div>
-            <div>
-              <span className="text-[11px] font-bold text-gray-500 uppercase block">Max Borrow Duration</span>
-              <span className="text-xl font-black text-gray-900">{item.maxDurationDays} Days</span>
+          )}
+
+          {item.type === 'exchange' && (
+            <div className="bg-indigo-50 p-5 rounded-3xl border border-indigo-200">
+              <span className="text-[11px] font-bold text-indigo-700 uppercase block">Exchange Preference</span>
+              <p className="text-base font-bold text-gray-900 mt-1">{item.exchangePreference || 'Open to offers'}</p>
             </div>
-          </div>
+          )}
 
           {/* Lender Info Card */}
           <div className="bg-white p-5 rounded-3xl border border-gray-200 shadow-sm flex items-center justify-between">
@@ -149,13 +188,36 @@ export const ItemDetailsPage: React.FC<ItemDetailsPageProps> = ({
 
           {/* Action Buttons */}
           <div className="flex items-center space-x-3 pt-2">
-            <button
-              onClick={() => setBorrowModalOpen(true)}
-              className="flex-1 bg-[#900C3F] hover:bg-[#700931] text-white py-3.5 rounded-2xl font-extrabold text-sm shadow-md hover:shadow-lg transition-all flex items-center justify-center space-x-2"
-            >
-              <Calendar className="w-4 h-4" />
-              <span>Request to Borrow</span>
-            </button>
+            {canBorrow && (
+              <button
+                onClick={() => setBorrowModalOpen(true)}
+                className="flex-1 bg-[#900C3F] hover:bg-[#700931] text-white py-3.5 rounded-2xl font-extrabold text-sm shadow-md hover:shadow-lg transition-all flex items-center justify-center space-x-2"
+              >
+                <Calendar className="w-4 h-4" />
+                <span>Request to Borrow</span>
+              </button>
+            )}
+
+            {isOwner && (
+              <>
+                <button
+                  onClick={() => onNavigate(`#edit-listing/${item.id}`)}
+                  className="flex-1 bg-white border border-[#FFC0CB] text-[#900C3F] py-3.5 rounded-2xl font-extrabold text-sm shadow-sm hover:bg-[#FFF0F5] transition-all flex items-center justify-center space-x-2"
+                >
+                  <Pencil className="w-4 h-4" />
+                  <span>Edit Listing</span>
+                </button>
+                <button
+                  onClick={() => { void handleDelete(); }}
+                  disabled={isDeleting}
+                  className="p-3.5 rounded-2xl border border-red-200 text-red-600 hover:bg-red-50 transition-all disabled:opacity-50"
+                  title="Delete listing"
+                  aria-label="Delete listing"
+                >
+                  <Trash2 className="w-5 h-5" />
+                </button>
+              </>
+            )}
 
             <button
               onClick={() => setReportModalOpen(true)}

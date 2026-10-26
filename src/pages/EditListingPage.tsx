@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { ArrowLeft, Save } from 'lucide-react';
-import type { ResourceItem, Category } from '../types';
+import type { ResourceItem, Category, ResourceType } from '../types';
 import { storage } from '../services/storage';
 import { reportError } from '../services/reportError';
 
@@ -21,8 +21,13 @@ export const EditListingPage: React.FC<EditListingPageProps> = ({
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [category, setCategory] = useState('');
+  const [type, setType] = useState<ResourceType>('lend');
   const [condition, setCondition] = useState<'Like New' | 'Good' | 'Fair'>('Good');
   const [depositAmount, setDepositAmount] = useState(0);
+  const [maxDurationDays, setMaxDurationDays] = useState(5);
+  const [salePrice, setSalePrice] = useState('');
+  const [exchangePreference, setExchangePreference] = useState('');
+  const isBorrowListing = type === 'lend' || type === 'borrow';
 
   useEffect(() => {
     const items = storage.getItems();
@@ -32,8 +37,12 @@ export const EditListingPage: React.FC<EditListingPageProps> = ({
       setTitle(found.title);
       setDescription(found.description);
       setCategory(found.category);
+      setType(found.type);
       setCondition(found.condition);
       setDepositAmount(found.depositAmount);
+      setMaxDurationDays(found.maxDurationDays);
+      setSalePrice(found.salePrice === undefined ? '' : String(found.salePrice));
+      setExchangePreference(found.exchangePreference || '');
     }
   }, [itemId]);
 
@@ -55,8 +64,12 @@ export const EditListingPage: React.FC<EditListingPageProps> = ({
         title,
         description,
         category,
+        type,
         condition,
-        depositAmount: Number(depositAmount)
+        depositAmount: isBorrowListing ? Number(depositAmount) : 0,
+        maxDurationDays: isBorrowListing ? Number(maxDurationDays) : 0,
+        salePrice: type === 'sale' ? Number(salePrice) : undefined,
+        exchangePreference: type === 'exchange' ? exchangePreference.trim() : undefined,
       });
       onUpdated();
       onNavigate(`#item/${item.id}`);
@@ -104,6 +117,22 @@ export const EditListingPage: React.FC<EditListingPageProps> = ({
           </div>
 
           <div>
+            <label className="block text-xs font-bold text-gray-700 mb-1">Listing Type</label>
+            <select
+              value={type}
+              onChange={(e) => setType(e.target.value as ResourceType)}
+              className="w-full px-4 py-2 rounded-xl border border-gray-300 text-sm focus:outline-none focus:border-[#900C3F]"
+            >
+              <option value="lend">Lend</option>
+              <option value="borrow">Borrow</option>
+              <option value="giveaway">Giveaway</option>
+              <option value="donate">Donate</option>
+              <option value="exchange">Exchange</option>
+              <option value="sale">For Sale</option>
+            </select>
+          </div>
+
+          <div>
             <label className="block text-xs font-bold text-gray-700 mb-1">Description</label>
             <textarea
               rows={4}
@@ -114,12 +143,12 @@ export const EditListingPage: React.FC<EditListingPageProps> = ({
             />
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
+          {isBorrowListing && <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="block text-xs font-bold text-gray-700 mb-1">Condition</label>
               <select
                 value={condition}
-                onChange={(e: any) => setCondition(e.target.value)}
+                onChange={(e) => setCondition(e.target.value as 'Like New' | 'Good' | 'Fair')}
                 className="w-full px-3 py-2 rounded-xl border border-gray-300 text-xs font-semibold focus:outline-none focus:border-[#900C3F]"
               >
                 <option value="Like New">Like New</option>
@@ -129,15 +158,72 @@ export const EditListingPage: React.FC<EditListingPageProps> = ({
             </div>
 
             <div>
-              <label className="block text-xs font-bold text-gray-700 mb-1">Deposit (₹)</label>
+              <label className="block text-xs font-bold text-gray-700 mb-1">Security Deposit (₹)</label>
               <input
                 type="number"
+                min="0"
                 value={depositAmount}
                 onChange={(e) => setDepositAmount(Number(e.target.value))}
                 className="w-full px-3 py-2 rounded-xl border border-gray-300 text-xs font-semibold focus:outline-none focus:border-[#900C3F]"
               />
             </div>
-          </div>
+          </div>}
+
+          {!isBorrowListing && (
+            <div>
+              <label className="block text-xs font-bold text-gray-700 mb-1">Condition</label>
+              <select
+                value={condition}
+                onChange={(e) => setCondition(e.target.value as 'Like New' | 'Good' | 'Fair')}
+                className="w-full px-3 py-2 rounded-xl border border-gray-300 text-xs font-semibold focus:outline-none focus:border-[#900C3F]"
+              >
+                <option value="Like New">Like New</option>
+                <option value="Good">Good</option>
+                <option value="Fair">Fair</option>
+              </select>
+            </div>
+          )}
+
+          {isBorrowListing && (
+            <div>
+              <label className="block text-xs font-bold text-gray-700 mb-1">Maximum Borrow Duration (days)</label>
+              <input
+                type="number"
+                min="1"
+                required
+                value={maxDurationDays}
+                onChange={(e) => setMaxDurationDays(Number(e.target.value))}
+                className="w-full px-3 py-2 rounded-xl border border-gray-300 text-sm font-semibold focus:outline-none focus:border-[#900C3F]"
+              />
+            </div>
+          )}
+
+          {type === 'sale' && (
+            <div>
+              <label className="block text-xs font-bold text-gray-700 mb-1">Sale Price (₹)</label>
+              <input
+                type="number"
+                min="0"
+                required
+                value={salePrice}
+                onChange={(e) => setSalePrice(e.target.value)}
+                className="w-full px-3 py-2 rounded-xl border border-gray-300 text-sm font-semibold focus:outline-none focus:border-[#900C3F]"
+              />
+            </div>
+          )}
+
+          {type === 'exchange' && (
+            <div>
+              <label className="block text-xs font-bold text-gray-700 mb-1">What would you like in exchange?</label>
+              <input
+                type="text"
+                required
+                value={exchangePreference}
+                onChange={(e) => setExchangePreference(e.target.value)}
+                className="w-full px-4 py-2 rounded-xl border border-gray-300 text-sm focus:outline-none focus:border-[#900C3F]"
+              />
+            </div>
+          )}
 
           <button
             type="submit"

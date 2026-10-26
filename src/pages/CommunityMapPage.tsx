@@ -6,6 +6,7 @@ import { ItemCard } from '../components/ItemCard';
 
 interface CommunityMapPageProps {
   items: ResourceItem[];
+  currentUserId: string;
   wishlistIds: string[];
   onNavigate: (path: string) => void;
   onToggleWishlist: (id: string, e: React.MouseEvent) => void;
@@ -13,6 +14,7 @@ interface CommunityMapPageProps {
 
 export const CommunityMapPage: React.FC<CommunityMapPageProps> = ({
   items,
+  currentUserId,
   wishlistIds,
   onNavigate,
   onToggleWishlist
@@ -131,6 +133,7 @@ export const CommunityMapPage: React.FC<CommunityMapPageProps> = ({
               <ItemCard
                 key={item.id}
                 item={item}
+                currentUserId={currentUserId}
                 isWishlisted={wishlistIds.includes(item.id)}
                 onToggleWishlist={onToggleWishlist}
                 onClick={(id) => onNavigate(`#item/${id}`)}

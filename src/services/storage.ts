@@ -187,8 +187,26 @@ export const storage = {
     setCache('items', byId<ResourceItem>('items').map((entry) => entry.id === id ? updated : entry));
   },
   async deleteItem(id: string) {
-    await deleteRecord('items', id);
-    setCache('items', byId<ResourceItem>('items').filter((entry) => entry.id !== id));
+    const user = authenticatedUser();
+    const item = byId<ResourceItem>('items').find((entry) => entry.id === id);
+    if (!item) throw new Error('Listing not found.');
+    if (item.userId !== user.id && user.role !== 'admin') {
+      throw new Error('You can only delete your own listings.');
+    }
+    let listingUpdate = requireSupabase()
+      .from('app_records')
+      .update({
+        payload: { ...toPayload(item), status: 'archived' },
+      })
+      .eq('collection', 'items')
+      .eq('record_id', id);
+    if (user.role !== 'admin') listingUpdate = listingUpdate.eq('owner_id', user.id);
+    const { data, error } = await listingUpdate.select('record_id').maybeSingle();
+    if (error) throw error;
+    if (!data) throw new Error('Listing not found or you do not have permission to delete it.');
+    setCache('items', byId<ResourceItem>('items').map((entry) => (
+      entry.id === id ? { ...entry, status: 'archived' } : entry
+    )));
     await storage.load(authenticatedUser());
   },
 

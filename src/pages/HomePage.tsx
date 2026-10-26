@@ -118,6 +118,7 @@ export const HomePage: React.FC<HomePageProps> = ({
                     <ItemCard
                       key={item.id}
                       item={item}
+                      currentUserId={user.id}
                       isWishlisted={wishlistIds.includes(item.id)}
                       onToggleWishlist={onToggleWishlist}
                       onClick={(id) => onNavigate(`#item/${id}`)}
@@ -196,6 +197,7 @@ export const HomePage: React.FC<HomePageProps> = ({
               <ItemCard
                 key={item.id}
                 item={item}
+                currentUserId={user.id}
                 isWishlisted={wishlistIds.includes(item.id)}
                 onToggleWishlist={onToggleWishlist}
                 onClick={(id) => onNavigate(`#item/${id}`)}

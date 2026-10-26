@@ -39,6 +39,10 @@ cp .env.example .env
 ### 3. Database Initialization
 In the Supabase Dashboard, open **SQL Editor**, paste and run [`server/db/schema.sql`](./server/db/schema.sql). It creates the app-records table, row-level security policies, an Auth profile trigger, and the default categories. There is no local PostgreSQL server or `psql` step.
 
+Then run [`server/db/migrations/20261027000000_listing_and_borrowing_safety.sql`](./server/db/migrations/20261027000000_listing_and_borrowing_safety.sql) in the same SQL Editor. This migration keeps RLS enabled, enforces borrow ownership and availability in PostgreSQL, archives deleted listings, and synchronizes listing status with accepted and completed borrow transactions. Apply it to both existing and newly initialized projects.
+
+Listings now have distinct `lend`, `sale`, and `exchange` types. Existing `exchange` records are not reclassified automatically because the original form did not store enough information to determine whether each one was a sale or a barter; review and edit any legacy sale listings to enter a sale price.
+
 The previous app code did not connect to PostgreSQL; it used localStorage and simulated authentication. This change replaces that runtime with Supabase, but it does not import any existing browser localStorage or external PostgreSQL data. New accounts and records are created in Supabase after the schema is installed.
 
 In **Authentication > URL Configuration**, set the site URL to your app URL and add your local/deployed URLs to the redirect allow-list. To use Google sign-in, enable Google under **Authentication > Providers** and configure its OAuth credentials there.

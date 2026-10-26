@@ -4,6 +4,7 @@ import type { ResourceItem } from '../types';
 
 interface ItemCardProps {
   item: ResourceItem;
+  currentUserId: string;
   isWishlisted: boolean;
   onToggleWishlist: (id: string, e: React.MouseEvent) => void;
   onClick: (id: string) => void;
@@ -12,6 +13,7 @@ interface ItemCardProps {
 
 export const ItemCard: React.FC<ItemCardProps> = ({
   item,
+  currentUserId,
   isWishlisted,
   onToggleWishlist,
   onClick,
@@ -44,9 +46,15 @@ export const ItemCard: React.FC<ItemCardProps> = ({
         {/* Item Type Badge */}
         <div className="absolute top-3 left-3 flex items-center space-x-1">
           <span className={`text-[11px] font-extrabold px-2.5 py-1 rounded-full uppercase tracking-wider shadow-sm text-white ${
-            item.type === 'lend' ? 'bg-[#900C3F]' : item.type === 'giveaway' ? 'bg-emerald-600' : 'bg-indigo-600'
+            item.type === 'lend' || item.type === 'borrow' ? 'bg-[#900C3F]' : item.type === 'giveaway' || item.type === 'donate' ? 'bg-emerald-600' : 'bg-indigo-600'
           }`}>
-            {item.type === 'lend' ? 'Resource Library' : item.type === 'giveaway' ? 'Free Material' : 'Exchange'}
+            {item.type === 'lend' || item.type === 'borrow'
+              ? 'Borrow'
+              : item.type === 'giveaway' || item.type === 'donate'
+                ? 'Free'
+                : item.type === 'sale'
+                  ? 'For Sale'
+                  : 'Exchange'}
           </span>
         </div>
 
@@ -92,14 +100,33 @@ export const ItemCard: React.FC<ItemCardProps> = ({
 
         {/* CTA Footer */}
         <div className="flex items-center justify-between pt-1">
-          <div>
-            <span className="text-[10px] font-bold text-gray-400 uppercase block">Deposit</span>
-            <span className="text-sm font-extrabold text-gray-900">
-              {item.depositAmount > 0 ? `₹${item.depositAmount}` : 'Free'}
-            </span>
-          </div>
+          {(item.type === 'lend' || item.type === 'borrow') && (
+            <div>
+              <span className="text-[10px] font-bold text-gray-400 uppercase block">Deposit · Up to {item.maxDurationDays} days</span>
+              <span className="text-sm font-extrabold text-gray-900">
+                {item.depositAmount > 0 ? `₹${item.depositAmount}` : 'Free'}
+              </span>
+            </div>
+          )}
+          {item.type === 'sale' && (
+            <div>
+              <span className="text-[10px] font-bold text-gray-400 uppercase block">Sale Price</span>
+              <span className="text-sm font-extrabold text-gray-900">
+                {typeof item.salePrice === 'number' ? `₹${item.salePrice}` : 'Price not set'}
+              </span>
+            </div>
+          )}
+          {item.type === 'exchange' && (
+            <div className="min-w-0">
+              <span className="text-[10px] font-bold text-gray-400 uppercase block">Looking for</span>
+              <span className="text-sm font-extrabold text-gray-900 line-clamp-1">
+                {item.exchangePreference || 'Open to offers'}
+              </span>
+            </div>
+          )}
 
-          {onQuickBorrow && (
+          {onQuickBorrow && item.status === 'available' && item.userId !== currentUserId
+            && (item.type === 'lend' || item.type === 'borrow') && (
             <button
               onClick={(e) => onQuickBorrow(item, e)}
               className="bg-[#FFF0F5] hover:bg-[#FFD1DC] text-[#900C3F] px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center space-x-1"

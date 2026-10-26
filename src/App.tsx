@@ -237,8 +237,9 @@ export function App() {
   };
 
   const unreadNotifs = notifications.filter(n => !n.readStatus).length;
-  const wishlistedItems = items.filter(i => wishlistIds.includes(i.id));
-  const userListings = items.filter(i => user && i.userId === user.id);
+  const availableItems = items.filter(i => i.status === 'available');
+  const wishlistedItems = availableItems.filter(i => wishlistIds.includes(i.id));
+  const userListings = items.filter(i => user && i.userId === user.id && i.status !== 'archived');
 
   // ENTRY POINT: LOGIN-FIRST FLOW GATING
   // If user is not authenticated and trying to access main app, show Login page
@@ -333,7 +334,8 @@ export function App() {
           {currentPath === '#landing' && (
             <LandingPage
               onNavigate={navigateTo}
-              featuredItems={items.slice(0, 3)}
+              currentUserId={user.id}
+              featuredItems={availableItems.slice(0, 3)}
               wishlistIds={wishlistIds}
               onToggleWishlist={handleToggleWishlist}
             />
@@ -342,7 +344,7 @@ export function App() {
           {(currentPath === '#home' || currentPath === '#login') && user && (
             <HomePage
               user={user}
-              items={items}
+              items={availableItems}
               categories={categories}
               wishlistIds={wishlistIds}
               onNavigate={navigateTo}
@@ -352,8 +354,9 @@ export function App() {
 
           {currentPath === '#explore' && (
             <ExplorePage
-              items={items}
+              items={availableItems}
               categories={categories}
+              currentUserId={user.id}
               wishlistIds={wishlistIds}
               onNavigate={navigateTo}
               onToggleWishlist={handleToggleWishlist}
@@ -367,6 +370,7 @@ export function App() {
               isWishlisted={wishlistIds.includes(activeItemId || '')}
               onNavigate={navigateTo}
               onToggleWishlist={handleToggleWishlist}
+              onDeleted={refreshData}
             />
           )}
 
@@ -390,7 +394,8 @@ export function App() {
 
           {currentPath === '#map' && (
             <CommunityMapPage
-              items={items}
+              items={availableItems}
+              currentUserId={user.id}
               wishlistIds={wishlistIds}
               onNavigate={navigateTo}
               onToggleWishlist={handleToggleWishlist}
@@ -399,7 +404,7 @@ export function App() {
 
           {currentPath === '#project-mode' && (
             <ProjectModePage
-              items={items}
+              items={availableItems}
               onNavigate={navigateTo}
             />
           )}
@@ -407,6 +412,7 @@ export function App() {
           {currentPath === '#wishlist' && (
             <WishlistPage
               wishlistedItems={wishlistedItems}
+              currentUserId={user.id}
               wishlistIds={wishlistIds}
               onNavigate={navigateTo}
               onToggleWishlist={handleToggleWishlist}

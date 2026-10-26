@@ -5,6 +5,7 @@ import { ItemCard } from '../components/ItemCard';
 
 interface ExplorePageProps {
   items: ResourceItem[];
+  currentUserId: string;
   categories: Category[];
   wishlistIds: string[];
   onNavigate: (path: string) => void;
@@ -13,6 +14,7 @@ interface ExplorePageProps {
 
 export const ExplorePage: React.FC<ExplorePageProps> = ({
   items,
+  currentUserId,
   categories,
   wishlistIds,
   onNavigate,
@@ -93,10 +95,13 @@ export const ExplorePage: React.FC<ExplorePageProps> = ({
               onChange={(e) => setSelectedType(e.target.value)}
               className="w-full px-3 py-2 rounded-xl border border-gray-200 text-xs font-semibold text-gray-700 bg-white focus:outline-none focus:border-[#900C3F]"
             >
-              <option value="All">All Types (Lend & Giveaway)</option>
-             <option value="lend">Lend</option>
-                <option value="giveaway">Giveaway</option>
-                <option value="exchange">Sell</option>
+              <option value="All">All Listing Types</option>
+              <option value="lend">Lend</option>
+              <option value="borrow">Borrow</option>
+              <option value="giveaway">Giveaway</option>
+              <option value="donate">Donate</option>
+              <option value="exchange">Exchange</option>
+              <option value="sale">For Sale</option>
             </select>
           </div>
 
@@ -140,6 +145,7 @@ export const ExplorePage: React.FC<ExplorePageProps> = ({
             <ItemCard
               key={item.id}
               item={item}
+              currentUserId={currentUserId}
               isWishlisted={wishlistIds.includes(item.id)}
               onToggleWishlist={onToggleWishlist}
               onClick={(id) => onNavigate(`#item/${id}`)}

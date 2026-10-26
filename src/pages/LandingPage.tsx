@@ -5,6 +5,7 @@ import { ItemCard } from '../components/ItemCard';
 
 interface LandingPageProps {
   onNavigate: (path: string) => void;
+  currentUserId: string;
   featuredItems: ResourceItem[];
   wishlistIds: string[];
   onToggleWishlist: (id: string, e: React.MouseEvent) => void;
@@ -12,6 +13,7 @@ interface LandingPageProps {
 
 export const LandingPage: React.FC<LandingPageProps> = ({
   onNavigate,
+  currentUserId,
   featuredItems,
   wishlistIds,
   onToggleWishlist
@@ -135,6 +137,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
             <ItemCard
               key={item.id}
               item={item}
+              currentUserId={currentUserId}
               isWishlisted={wishlistIds.includes(item.id)}
               onToggleWishlist={onToggleWishlist}
               onClick={(id) => onNavigate(`#item/${id}`)}

@@ -5,6 +5,7 @@ import { ItemCard } from '../components/ItemCard';
 
 interface WishlistPageProps {
   wishlistedItems: ResourceItem[];
+  currentUserId: string;
   wishlistIds: string[];
   onNavigate: (path: string) => void;
   onToggleWishlist: (id: string, e: React.MouseEvent) => void;
@@ -12,6 +13,7 @@ interface WishlistPageProps {
 
 export const WishlistPage: React.FC<WishlistPageProps> = ({
   wishlistedItems,
+  currentUserId,
   onNavigate,
   onToggleWishlist
 }) => {
@@ -50,6 +52,7 @@ export const WishlistPage: React.FC<WishlistPageProps> = ({
             <ItemCard
               key={item.id}
               item={item}
+              currentUserId={currentUserId}
               isWishlisted={true}
               onToggleWishlist={onToggleWishlist}
               onClick={(id) => onNavigate(`#item/${id}`)}

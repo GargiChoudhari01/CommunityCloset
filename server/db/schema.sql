@@ -261,6 +261,10 @@ declare
   awarded_description text;
   awarded_icon text;
 begin
+  if new.collection = 'items' and tg_op = 'UPDATE' then
+    return new;
+  end if;
+
   if new.collection = 'items' then
     awarded_user := (new.payload ->> 'userId')::uuid;
     awarded_type := 'first_share';

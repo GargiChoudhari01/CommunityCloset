@@ -20,7 +20,7 @@ export interface User {
   createdAt: string;
 }
 
-export type ResourceType = 'lend' | 'giveaway' | 'exchange' | 'donate' | 'borrow';
+export type ResourceType = 'lend' | 'giveaway' | 'exchange' | 'sale' | 'donate' | 'borrow';
 export type ResourceStatus = 'available' | 'borrowed' | 'claimed' | 'archived';
 
 export interface ResourceItem {
@@ -36,6 +36,7 @@ export interface ResourceItem {
   quantity?: number;
   depositAmount: number;
   maxDurationDays: number;
+  salePrice?: number;
   locationName: string;
   lat: number;
   lng: number;

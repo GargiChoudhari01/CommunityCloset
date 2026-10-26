@@ -19,7 +19,7 @@ export const BorrowRequestModal: React.FC<BorrowRequestModalProps> = ({
 }) => {
   const [startDate, setStartDate] = useState(new Date().toISOString().split('T')[0]);
   const [endDate, setEndDate] = useState(
-    new Date(Date.now() + 3 * 86400000).toISOString().split('T')[0]
+    new Date(Date.now() + Math.max(0, Math.min(3, item?.maxDurationDays ?? 3)) * 86400000).toISOString().split('T')[0]
   );
   const [notes, setNotes] = useState('');
 
@@ -27,6 +27,20 @@ export const BorrowRequestModal: React.FC<BorrowRequestModalProps> = ({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (item.userId === currentUser.id) {
+      reportError(new Error('You cannot borrow your own listing.'));
+      return;
+    }
+    if ((item.type !== 'lend' && item.type !== 'borrow') || item.status !== 'available') {
+      reportError(new Error('This listing is not currently available to borrow.'));
+      return;
+    }
+    const requestedDays = (Date.parse(`${endDate}T00:00:00Z`) - Date.parse(`${startDate}T00:00:00Z`)) / 86400000;
+    if (!Number.isFinite(requestedDays) || requestedDays < 0 || requestedDays > item.maxDurationDays) {
+      reportError(new Error(`Choose a borrowing period of no more than ${item.maxDurationDays} days.`));
+      return;
+    }
+
     const newTx: BorrowRequest = {
       id: `req-${Date.now()}`,
       listingId: item.id,
@@ -86,7 +100,7 @@ export const BorrowRequestModal: React.FC<BorrowRequestModalProps> = ({
           />
           <div>
             <span className="text-[10px] font-bold uppercase bg-[#FFF0F5] text-[#900C3F] px-2 py-0.5 rounded-md">
-              {item.type === 'lend' ? 'Resource Library' : 'Material Exchange'}
+              {item.type === 'lend' || item.type === 'borrow' ? 'Borrow Listing' : 'Material Exchange'}
             </span>
             <h3 className="font-extrabold text-gray-900 text-lg line-clamp-1">{item.title}</h3>
             <p className="text-xs text-gray-500">Lender: {item.ownerName} ({item.locationName})</p>
@@ -100,6 +114,7 @@ export const BorrowRequestModal: React.FC<BorrowRequestModalProps> = ({
               <input
                 type="date"
                 required
+                min={new Date().toISOString().split('T')[0]}
                 value={startDate}
                 onChange={(e) => setStartDate(e.target.value)}
                 className="w-full px-3 py-2 rounded-xl border border-gray-300 text-sm focus:outline-none focus:border-[#900C3F]"
@@ -110,6 +125,10 @@ export const BorrowRequestModal: React.FC<BorrowRequestModalProps> = ({
               <input
                 type="date"
                 required
+                min={startDate}
+                max={startDate
+                  ? new Date(Date.parse(`${startDate}T00:00:00Z`) + item.maxDurationDays * 86400000).toISOString().split('T')[0]
+                  : undefined}
                 value={endDate}
                 onChange={(e) => setEndDate(e.target.value)}
                 className="w-full px-3 py-2 rounded-xl border border-gray-300 text-sm focus:outline-none focus:border-[#900C3F]"
@@ -129,7 +148,9 @@ export const BorrowRequestModal: React.FC<BorrowRequestModalProps> = ({
           </div>
 
           <div className="bg-[#FFF0F5] p-3 rounded-2xl border border-[#FFC0CB]/60 flex items-center justify-between text-xs">
-            <span className="font-semibold text-gray-700">Security Deposit Required</span>
+            <span className="font-semibold text-gray-700">
+              Security Deposit · Up to {item.maxDurationDays} days
+            </span>
             <span className="font-extrabold text-[#900C3F] text-sm">
               {item.depositAmount > 0 ? `₹${item.depositAmount}` : 'No Deposit (Free)'}
             </span>
