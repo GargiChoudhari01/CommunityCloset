@@ -34,7 +34,7 @@ export const AdminLoginPage: React.FC<AdminLoginPageProps> = ({ onLoginSuccess, 
             <Shield className="w-7 h-7" />
           </div>
           <h1 className="text-2xl font-black text-gray-900">Admin Protected Area</h1>
-          <p className="text-xs text-gray-500">Katraj & Pune South Community Moderation Suite</p>
+          <p className="text-xs text-gray-500">CommunityCloset Moderation</p>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-4">
